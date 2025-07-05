@@ -1,7 +1,8 @@
 # main.rb
 require 'dotenv'
-Dotenv.load(File.expand_path('../.env', __dir__))
+require 'set'
 
+Dotenv.load(File.expand_path('../.env', __dir__))
 require_relative 'mastodon_client'
 require_relative 'command_parser'
 
@@ -16,13 +17,11 @@ google_sheet_id = ENV['GOOGLE_SHEET_ID']
 
 if google_credentials && google_sheet_id
   puts "   인증 파일: #{google_credentials}"
-
   if File.exist?(google_credentials)
     puts "   인증 파일 존재 확인"
   else
     puts "   [경고] 인증 파일 없음: #{google_credentials}"
   end
-
   puts "   시트 ID: #{google_sheet_id[0..10]}..."
 else
   puts "   [경고] .env 파일에 시트 설정이 없습니다 (GOOGLE_CREDENTIALS_PATH / GOOGLE_SHEET_ID)"
@@ -42,11 +41,9 @@ begin
   if File.exist?(google_credentials)
     session = GoogleDrive::Session.from_service_account_key(google_credentials)
     spreadsheet = session.spreadsheet_by_key(google_sheet_id)
-
     puts "   시트 제목: #{spreadsheet.title}"
     required_sheets = ['사용자', '응답', '기숙사점수']
     missing = required_sheets - spreadsheet.worksheets.map(&:title)
-
     if missing.empty?
       puts "   모든 필수 워크시트 존재 확인"
     else
@@ -65,6 +62,7 @@ puts "   예시 명령어: [입학/이름], [출석], [과제]"
 start_time = Time.now
 mention_count = 0
 error_count = 0
+processed_mentions = Set.new
 
 # ✅ 자동 툿 스케줄러
 Thread.new do
@@ -72,7 +70,7 @@ Thread.new do
     begin
       now = Time.now.getlocal("+09:00")
       current_time = now.strftime('%H:%M')
-
+      
       case current_time
       when '09:00'
         msg = CommandParser.generate_scheduled_message("아침 출석 자동툿")
@@ -94,14 +92,39 @@ Thread.new do
   end
 end
 
-# ✅ 멘션 처리 루프
+# ✅ 멘션 처리 루프 (중복 처리 방지 추가)
 loop do
   begin
     MastodonClient.listen_mentions do |mention|
       begin
+        # 중복 처리 방지
+        mention_id = mention.status.id
+        if processed_mentions.include?(mention_id)
+          puts "[스킵] 이미 처리된 멘션: #{mention_id}"
+          next
+        end
+        
+        # 봇 시작 이전 멘션 스킵
+        begin
+          mention_time = Time.parse(mention.status.created_at)
+          if mention_time < start_time
+            puts "[스킵] 봇 시작 이전 멘션: #{mention_time}"
+            processed_mentions.add(mention_id)
+            next
+          end
+        rescue => time_error
+          puts "[경고] 멘션 시간 파싱 실패: #{time_error.message}"
+        end
+        
+        # 멘션 처리
+        processed_mentions.add(mention_id)
         mention_count += 1
-        puts "\n[멘션] ##{mention_count} 처리 시작"
+        puts "\n[멘션] ##{mention_count} 처리 시작 (ID: #{mention_id})"
+        puts "   시간: #{mention.status.created_at rescue '알 수 없음'}"
+        puts "   사용자: @#{mention.account.acct}"
+        
         CommandParser.handle(mention)
+        
       rescue => e
         error_count += 1
         puts "[에러] 멘션 처리 실패: #{e.message}"
@@ -114,26 +137,23 @@ loop do
         end
       end
     end
-
   rescue Interrupt
     puts "\n[종료] 교수봇 종료 요청 수신"
     uptime = Time.now - start_time
     h = (uptime / 3600).to_i
     m = ((uptime % 3600) / 60).to_i
-
     puts "\n[통계] 총 운영 시간: #{h}시간 #{m}분"
     puts "   총 멘션 처리: #{mention_count}건"
     puts "   오류 발생: #{error_count}건"
+    puts "   처리된 멘션 ID: #{processed_mentions.size}개"
     puts "   성공률: #{mention_count > 0 ? ((mention_count - error_count) * 100.0 / mention_count).round(1) : 0}%"
     puts "[완료] 교수봇 종료"
     break
-
   rescue => e
     error_count += 1
     puts "[오류] 메인 루프 예외: #{e.message}"
     puts "   15초 후 재시도"
     sleep 15
   end
-
   sleep 15
 end
