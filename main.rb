@@ -1,9 +1,16 @@
 # main.rb
 require 'dotenv'
 require 'set'
-require 'time'
 
-Dotenv.load(File.expand_path('../.env', __dir__))
+# .env 파일 로드 (현재 디렉토리에서)
+Dotenv.load('.env')
+
+# 디버깅: 환경변수 확인
+puts "DEBUG - 현재 디렉토리: #{Dir.pwd}"
+puts "DEBUG - .env 파일 존재: #{File.exist?('.env')}"
+puts "DEBUG - MASTODON_BASE_URL: '#{ENV['MASTODON_BASE_URL']}'"
+puts "DEBUG - MASTODON_TOKEN: #{ENV['MASTODON_TOKEN'] ? '존재함' : '없음'}"
+
 require_relative 'mastodon_client'
 require_relative 'command_parser'
 
