@@ -1,7 +1,7 @@
 source 'https://rubygems.org'
 
 # 마스토돈 API 클라이언트
-gem 'mastodon-api'
+gem 'mastodon'
 
 # 환경변수 관리
 gem 'dotenv'
@@ -15,14 +15,8 @@ gem 'googleauth'
 # JSON 처리 (Ruby 3.0+ 호환성)
 gem 'json'
 
-# HTTP 요청 (mastodon-api 의존성)
+# HTTP 요청 (mastodon 의존성)
 gem 'http'
-
-# 날짜/시간 처리 (구글 시트 데이터 처리용)
-gem 'chronic'
-
-# 더 나은 로깅 (선택사항)
-gem 'logger'
 
 # 개발/디버깅용 (선택사항)
 group :development do
