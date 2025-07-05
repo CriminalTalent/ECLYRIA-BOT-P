@@ -1,25 +1,22 @@
 source 'https://rubygems.org'
 
-# 마스토돈 API 클라이언트
-gem 'mastodon'
+# 마스토돈 API 클라이언트 (올바른 버전)
+gem 'mastodon-api', require: 'mastodon'
 
 # 환경변수 관리
 gem 'dotenv'
 
 # 구글 시트/드라이브 연동
-gem 'google_drive'
+gem 'google_drive', '~> 2.1'
 
-# 구글 API 인증 (google_drive 의존성)
-gem 'googleauth'
-
-# JSON 처리 (Ruby 3.0+ 호환성)
+# JSON 처리
 gem 'json'
 
-# HTTP 요청 (mastodon 의존성)
+# HTTP 요청
 gem 'http'
 
-# 개발/디버깅용 (선택사항)
+# 개발/디버깅용
 group :development do
-  gem 'pry'      # 디버깅용
-  gem 'irb'      # 대화형 Ruby
+  gem 'pry'
+  gem 'irb'
 end
