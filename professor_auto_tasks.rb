@@ -1,3 +1,4 @@
+# frozen_string_literal: false
 # professor_auto_tasks.rb
 require_relative 'mastodon_client'
 require 'google_drive'

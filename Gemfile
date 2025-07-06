@@ -2,7 +2,7 @@
 source 'https://rubygems.org'
 
 # HTTP 클라이언트 (마스토돈 API 직접 호출용)
-gem 'http', '~> 5.0'
+gem 'http', '~> 3.0'
 
 # 환경변수 관리
 gem 'dotenv', '~> 2.8'
@@ -18,3 +18,4 @@ group :development do
   gem 'pry'
   gem 'irb'
 end
+gem 'mastodon-api', '~> 2.0'

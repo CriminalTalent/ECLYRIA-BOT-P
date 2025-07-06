@@ -1,3 +1,4 @@
+# frozen_string_literal: false
 # mastodon_client.rb
 require 'mastodon'
 require 'uri'
