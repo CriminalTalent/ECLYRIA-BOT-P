@@ -3,6 +3,7 @@ require 'dotenv/load'
 require 'mastodon'
 require 'google_drive'
 require 'json'
+require 'set'
 
 puts "DEBUG - 현재 디렉토리: #{Dir.pwd}"
 puts "DEBUG - .env 파일 존재: #{File.exist?('.env')}"
@@ -76,4 +77,98 @@ rescue => e
   puts "💥 오류 스택:"
   puts e.backtrace[0..10].join("\n")
   puts "[실패] 마스토돈 연결 실패"
+  exit 1
 end
+
+# 봇 시작
+puts "\n[봇 시작] 호그와트 교수봇 활동 시작!"
+puts "🎓 입학 신청 및 멘션 수신 대기 중..."
+
+# 멘션 처리 변수 초기화
+start_time = Time.now
+mention_count = 0
+error_count = 0
+processed_mentions = Set.new
+
+loop do
+  begin
+    MastodonClient.listen_mentions do |mention|
+      begin
+        # 중복 처리 방지
+        mention_id = mention.status.id
+        if processed_mentions.include?(mention_id)
+          puts "[스킵] 이미 처리된 멘션: #{mention_id}"
+          next
+        end
+
+        # 봇 시작 이전 멘션 스킵
+        begin
+          mention_time = Time.parse(mention.status.created_at)
+          if mention_time < start_time
+            puts "[스킵] 봇 시작 이전 멘션: #{mention_time.strftime('%H:%M:%S')}"
+            processed_mentions.add(mention_id)
+            next
+          end
+        rescue => time_error
+          puts "[경고] 멘션 시간 파싱 실패: #{time_error.message}"
+        end
+
+        # 멘션 처리
+        processed_mentions.add(mention_id)
+        mention_count += 1
+
+        user_acct = mention.account.acct
+        content = mention.status.content.gsub(/<[^>]*>/, '').strip
+
+        puts "\n🎓 멘션 ##{mention_count}"
+        puts "   👤 학생: @#{user_acct}"
+        puts "   📝 내용: #{content}"
+        puts "   🕐 시간: #{mention.status.created_at rescue '알 수 없음'}"
+        puts "   🆔 멘션 ID: #{mention_id}"
+
+        CommandParser.handle(mention)
+        puts "   ✅ 멘션 처리 완료"
+
+      rescue => e
+        error_count += 1
+        puts "   ❌ 멘션 처리 실패: #{e.message}"
+        puts "   📍 위치: #{e.backtrace.first}"
+
+        # 오류 응답
+        begin
+          error_msg = "#{mention.account.display_name || mention.account.acct}님, 죄송합니다. 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요. 🎓"
+          MastodonClient.reply(mention, error_msg)
+          puts "   📤 오류 응답 전송 완료"
+        rescue => reply_error
+          puts "   💥 응답 전송도 실패: #{reply_error.message}"
+        end
+      end
+    end
+
+  rescue Interrupt
+    puts "\n[종료] 교수봇 종료 요청 수신 (Ctrl+C)"
+    break
+  rescue => e
+    puts "\n[오류] 스트리밍 연결 오류: #{e.message}"
+    puts "10초 후 재연결 시도..."
+    sleep(10)
+  end
+end
+
+# 종료 통계
+end_time = Time.now
+duration = end_time - start_time
+h = (duration / 3600).to_i
+m = ((duration % 3600) / 60).to_i
+s = (duration % 60).to_i
+
+puts "\n" + "="*50
+puts "📊 [통계] 호그와트 교수봇 운영 리포트"
+puts "="*50
+puts "⏰ 총 운영 시간: #{h}시간 #{m}분 #{s}초"
+puts "🎓 총 멘션 처리: #{mention_count}건"
+puts "❌ 오류 발생: #{error_count}건"
+puts "💾 처리된 멘션 ID: #{processed_mentions.size}개"
+puts "📈 성공률: #{mention_count > 0 ? ((mention_count - error_count) * 100.0 / mention_count).round(1) : 0}%"
+puts "="*50
+puts "🎓 [완료] 호그와트 교수봇이 안전하게 종료되었습니다."
