@@ -1,174 +1,239 @@
-# frozen_string_literal: false
-require 'dotenv/load'
-require 'mastodon'
-require 'google_drive'
-require 'json'
-require 'set'
+# 호그와트 교수님 봇 (ECLYRIA-BOT-P) 설치 가이드
 
-puts "DEBUG - 현재 디렉토리: #{Dir.pwd}"
-puts "DEBUG - .env 파일 존재: #{File.exist?('.env')}"
-puts "DEBUG - MASTODON_BASE_URL: '#{ENV['MASTODON_BASE_URL']}'"
-puts "DEBUG - MASTODON_TOKEN: 존재함" unless ENV['MASTODON_TOKEN'].to_s.strip.empty?
+따뜻하고 인자한 교수님이 학생들을 돌봐주는 마스토돈 봇입니다.
 
-puts "[시작] 호그와트 교수봇 기동 중..."
+## 교수님의 특별한 기능들
 
-# 마스토돈 설정 - 완전히 새로운 String 객체 생성
-base_url = String.new(ENV['MASTODON_BASE_URL'].to_s)
-token = String.new(ENV['MASTODON_TOKEN'].to_s)
+**다정한 학생 관리**
+- `[입학/원하는이름]` - 신규 학생을 따뜻하게 맞이하고 기숙사 배정
+- `[출석]` - 매일 출석하는 학생들을 격려 (갈레온 +2, 기숙사 점수 +1)
+- `[과제]` - 성실한 과제 제출을 칭찬 (갈레온 +5, 기숙사 점수 +3)
+- `[순위]` - 기숙사 경쟁 상황을 친절하게 안내
+- `[내정보]` - 개인 현황을 정성껏 설명
+- `[도움말]` - 언제든 친절한 안내
 
-puts "   BASE_URL: #{base_url}"
-puts "   TOKEN 시작: #{token[0..10]}..." if token
+**교수님의 성격**
+- 항상 다정하고 인자한 말투 (이모지 없는 깔끔한 텍스트)
+- 학생들을 격려하고 칭찬하는 마음
+- 실수에도 따뜻하게 이해해주는 포용력
+- 각 학생의 성장을 진심으로 응원
+- 매 응답마다 랜덤한 따뜻한 조언 추가
 
-# 디버깅용 상태 출력
-puts "🔍 base_url = #{base_url.inspect} (#{base_url.class}, frozen?=#{base_url.frozen?})"
-puts "🔍 token     = #{token.inspect} (#{token.class}, frozen?=#{token.frozen?})"
+**보안 강화**
+- 미등록 사용자는 입학 외 모든 명령어 차단
+- 중복 등록 방지
+- 봇 가동 이후 멘션만 처리
 
-if base_url.nil? || base_url.strip.empty?
-  raise "[오류] MASTODON_BASE_URL 환경변수가 비어 있습니다."
-end
+```
+/your-bot-directory/
+├── main.rb              # 메인 봇 코드
+├── mastodon_client.rb   # 마스토돈 클라이언트 클래스
+├── command_parser.rb    # 명령어 파서 및 데이터 관리
+├── Gemfile             # Ruby 의존성
+├── .env                # 환경변수 (아래 참조)
+├── credentials.json    # 구글 서비스 계정 키
+└── README.md           # 이 파일
+```
 
-if token.nil? || token.strip.empty?
-  raise "[오류] MASTODON_TOKEN 환경변수가 비어 있습니다."
-end
+## 🔧 환경변수 설정 (.env 파일)
 
-# 시트 설정
-puts "\n[시트] 설정 확인 중..."
-session = GoogleDrive::Session.from_service_account_key("credentials.json")
-puts "   인증 파일: credentials.json"
-puts "   인증 파일 존재 확인" if File.exist?("credentials.json")
+```bash
+# 마스토돈 설정
+MASTODON_BASE_URL=https://your-mastodon-instance.com
+MASTODON_TOKEN=your_access_token_here
 
-sheet_id = ENV['GOOGLE_SHEET_ID']
-if sheet_id.nil? || sheet_id.strip.empty?
-  raise "[오류] GOOGLE_SHEET_ID 환경변수가 비어 있습니다."
-end
+# 구글 시트 설정  
+GOOGLE_SHEET_ID=your_google_sheet_id_here
+```
 
-spreadsheet = session.spreadsheet_by_key(sheet_id)
-puts "   시트 ID: #{sheet_id}"
-puts "   ✅ 구글 시트 연결 성공: '#{spreadsheet.title}'"
+### 🔑 토큰 및 설정 방법
 
-# 마스토돈 연결
-begin
-  puts "\n[테스트] 마스토돈 연결..."
-  
-  # 추가 디버깅: URL과 토큰 재확인
-  puts "🔧 DEBUG - URL 처리 전: #{base_url.inspect}"
-  puts "🔧 DEBUG - TOKEN 처리 전: #{token[0..10]}..."
-  
-  # URL 정리
-  clean_url = base_url.strip.chomp('/')
-  clean_token = token.strip
-  
-  puts "🔧 DEBUG - URL 처리 후: #{clean_url.inspect}"
-  puts "🔧 DEBUG - TOKEN 처리 후: #{clean_token[0..10]}..."
-  puts "🔧 DEBUG - 처리 후 frozen 상태: url=#{clean_url.frozen?}, token=#{clean_token.frozen?}"
-  
-  client = Mastodon::REST::Client.new(
-    base_url: clean_url,
-    bearer_token: clean_token
-  )
-  
-  puts "🔧 DEBUG - 클라이언트 생성 완료"
-  account = client.verify_credentials
-  puts "   ✅ 연결 성공! 계정: @#{account.acct}"
-  
-rescue => e
-  puts "💥 연결 실패: #{e.message}"
-  puts "💥 오류 클래스: #{e.class}"
-  puts "💥 오류 스택:"
-  puts e.backtrace[0..10].join("\n")
-  puts "[실패] 마스토돈 연결 실패"
-  exit 1
-end
+#### 1. 마스토돈 액세스 토큰 발급
 
-# 봇 시작
-puts "\n[봇 시작] 호그와트 교수봇 활동 시작!"
-puts "🎓 입학 신청 및 멘션 수신 대기 중..."
+1. 마스토돈 웹에서 `설정` → `개발` → `새 애플리케이션` 
+2. 애플리케이션 이름: `호그와트 교수봇`
+3. 권한 설정:
+   - `read` (읽기 권한)
+   - `write` (쓰기 권한) 
+   - `push` (알림 권한)
+4. 생성된 `액세스 토큰`을 복사
 
-# 멘션 처리 변수 초기화
-start_time = Time.now
-mention_count = 0
-error_count = 0
-processed_mentions = Set.new
+#### 2. 구글 시트 API 설정
 
-loop do
-  begin
-    MastodonClient.listen_mentions do |mention|
-      begin
-        # 중복 처리 방지
-        mention_id = mention.status.id
-        if processed_mentions.include?(mention_id)
-          puts "[스킵] 이미 처리된 멘션: #{mention_id}"
-          next
-        end
+1. [Google Cloud Console](https://console.cloud.google.com/) 접속
+2. 새 프로젝트 생성 또는 기존 프로젝트 선택
+3. `Google Drive API`와 `Google Sheets API` 활성화
+4. `서비스 계정` 생성:
+   - IAM 및 관리 → 서비스 계정 → 서비스 계정 만들기
+   - 역할: `편집자` 권한 부여
+5. 서비스 계정 키 생성:
+   - JSON 형식으로 다운로드
+   - 파일명을 `credentials.json`으로 변경
+6. 구글 시트 공유:
+   - 서비스 계정 이메일에 `편집자` 권한으로 시트 공유
 
-        # 봇 시작 이전 멘션 스킵
-        begin
-          mention_time = Time.parse(mention.status.created_at)
-          if mention_time < start_time
-            puts "[스킵] 봇 시작 이전 멘션: #{mention_time.strftime('%H:%M:%S')}"
-            processed_mentions.add(mention_id)
-            next
-          end
-        rescue => time_error
-          puts "[경고] 멘션 시간 파싱 실패: #{time_error.message}"
-        end
+#### 3. 구글 시트 구조
 
-        # 멘션 처리
-        processed_mentions.add(mention_id)
-        mention_count += 1
+시트는 다음과 같은 워크시트 3개가 필요합니다:
 
-        user_acct = mention.account.acct
-        content = mention.status.content.gsub(/<[^>]*>/, '').strip
+**워크시트 1: 자동트윗스케줄**
+| A (ON/OFF) | B (시간) | C (자동트윗 출력) |
+|------------|----------|------------------|
+| TRUE       | 09:00    | 🌅 좋은 아침입니다! |
+| TRUE       | 22:00    | 🌙 [순위] |
 
-        puts "\n🎓 멘션 ##{mention_count}"
-        puts "   👤 학생: @#{user_acct}"
-        puts "   📝 내용: #{content}"
-        puts "   🕐 시간: #{mention.status.created_at rescue '알 수 없음'}"
-        puts "   🆔 멘션 ID: #{mention_id}"
+**워크시트 2: 기숙사점수**  
+| A (기숙사) | B (총점) |
+|-----------|----------|
+| 그리핀도르 | 0 |
+| 슬리데린   | 0 |
+| 레번클로   | 0 |
+| 후플푸프   | 0 |
 
-        CommandParser.handle(mention)
-        puts "   ✅ 멘션 처리 완료"
+**워크시트 3: 사용자정보**
+| A (ID) | B (이름) | C (갈레온) | D (기숙사) | E (메모) | F (기숙사점수) | G (마지막배틀일) | H (오늘배틀횟수) | I (출석날짜) |
+|--------|----------|------------|------------|----------|---------------|------------------|------------------|-------------|
 
-      rescue => e
-        error_count += 1
-        puts "   ❌ 멘션 처리 실패: #{e.message}"
-        puts "   📍 위치: #{e.backtrace.first}"
+## ⚙️ 설치 및 실행
 
-        # 오류 응답
-        begin
-          error_msg = "#{mention.account.display_name || mention.account.acct}님, 죄송합니다. 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요. 🎓"
-          MastodonClient.reply(mention, error_msg)
-          puts "   📤 오류 응답 전송 완료"
-        rescue => reply_error
-          puts "   💥 응답 전송도 실패: #{reply_error.message}"
-        end
-      end
-    end
+### 1. Ruby 환경 준비
+```bash
+# Ruby 버전 확인 (2.7 이상 필요)
+ruby --version
 
-  rescue Interrupt
-    puts "\n[종료] 교수봇 종료 요청 수신 (Ctrl+C)"
-    break
-  rescue => e
-    puts "\n[오류] 스트리밍 연결 오류: #{e.message}"
-    puts "10초 후 재연결 시도..."
-    sleep(10)
-  end
-end
+# Bundler 설치 (없는 경우)
+gem install bundler
+```
 
-# 종료 통계
-end_time = Time.now
-duration = end_time - start_time
-h = (duration / 3600).to_i
-m = ((duration % 3600) / 60).to_i
-s = (duration % 60).to_i
+### 2. 의존성 설치
+```bash
+# 프로젝트 디렉토리로 이동
+cd /path/to/your/bot
 
-puts "\n" + "="*50
-puts "📊 [통계] 호그와트 교수봇 운영 리포트"
-puts "="*50
-puts "⏰ 총 운영 시간: #{h}시간 #{m}분 #{s}초"
-puts "🎓 총 멘션 처리: #{mention_count}건"
-puts "❌ 오류 발생: #{error_count}건"
-puts "💾 처리된 멘션 ID: #{processed_mentions.size}개"
-puts "📈 성공률: #{mention_count > 0 ? ((mention_count - error_count) * 100.0 / mention_count).round(1) : 0}%"
-puts "="*50
-puts "🎓 [완료] 호그와트 교수봇이 안전하게 종료되었습니다."
+# Gemfile이 있는 디렉토리에서 실행
+bundle install
+```
+
+### 3. 설정 파일 준비
+```bash
+# .env 파일 생성 및 편집
+nano .env
+
+# credentials.json 파일 배치 확인
+ls -la credentials.json
+```
+
+### 4. 봇 실행
+```bash
+# 일반 실행
+ruby main.rb
+
+# 백그라운드 실행 (nohup 사용)
+nohup ruby main.rb > bot.log 2>&1 &
+
+# screen 사용 (권장)
+screen -S professor_bot
+ruby main.rb
+# Ctrl+A, D로 분리
+```
+
+### 5. 봇 중지
+```bash
+# 포그라운드 실행 중인 경우
+Ctrl+C
+
+# 백그라운드 프로세스 확인 및 종료
+ps aux | grep ruby
+kill [PID]
+
+# screen 세션 재연결
+screen -r professor_bot
+```
+
+## 교수님과 함께하는 명령어들
+
+| 명령어 | 교수님의 도움 | 받는 보상 |
+|--------|---------------|-----------|
+| `[입학/이름]` | 호그와트 입학을 따뜻하게 환영 | 갈레온 10개, 기숙사 배정 |
+| `[출석]` | 성실한 출석을 격려하고 칭찬 | 갈레온 +2, 기숙사 점수 +1 |
+| `[과제]` | 열심히 한 과제를 인정하고 응원 | 갈레온 +5, 기숙사 점수 +3 |
+| `[순위]` | 기숙사 순위를 친절하게 안내 | - |
+| `[내정보]` | 개인 상황을 정성껏 설명 | - |
+| `[도움말]` | 언제든 친절한 사용법 안내 | - |
+
+**특별한 점:**
+- 입학 시 고정 메시지: "이름님 호그와트 입학을 확인합니다. 열차에 탑승해주시기 바랍니다."
+- 15-30초 간격으로 새로운 멘션만 확인
+- 봇 가동 이후의 메시지만 처리하여 중복 방지
+- 매 응답마다 10가지 랜덤 조언 중 하나 추가 (입학 제외)
+- 미등록 사용자는 입학 외 명령어 사용 불가
+- 모든 메시지에서 이모지 제거로 깔끔한 텍스트
+- **기숙사는 "미배정" 상태로 등록되어 관리자가 수동 배정**
+
+## 교수님의 자동 공지 기능
+
+교수님이 정해진 시간에 학생들에게 따뜻한 공지를 전해드립니다.
+
+- 구글 시트의 첫 번째 워크시트에서 스케줄 관리
+- `ON/OFF` 열로 공지 활성화/비활성화 
+- `시간` 열에 HH:MM 형식으로 공지 시간 설정
+- `[순위]` 태그 사용 시 실시간 기숙사 순위로 자동 치환
+- 매분마다 스케줄을 확인하여 정확한 시간에 공지
+
+**예시 스케줄:**
+- 09:00: "좋은 아침입니다, 학생 여러분!"
+- 22:00: "오늘 하루도 수고하셨어요. [순위] 결과입니다."
+
+## 🚨 문제 해결
+
+### 일반적인 오류들:
+
+1. **마스토돈 연결 실패**
+   - `.env` 파일의 `MASTODON_BASE_URL`과 `MASTODON_TOKEN` 확인
+   - 토큰 권한 확인 (read, write, push 필요)
+
+2. **구글 시트 연결 실패**  
+   - `credentials.json` 파일 존재 여부 확인
+   - 시트 공유 권한 확인 (서비스 계정 이메일에 편집자 권한 필요)
+   - `GOOGLE_SHEET_ID` 정확성 확인
+
+3. **명령어 미작동**
+   - 구글 시트의 워크시트 순서 확인 (스케줄, 기숙사점수, 사용자정보)
+   - 시트 헤더 행 확인
+
+4. **메모리 부족**
+   - 서버 메모리 확인 (최소 1GB 권장)
+   - 불필요한 프로세스 종료
+
+### 로그 확인:
+```bash
+# 실시간 로그 확인
+tail -f bot.log
+
+# 오류 로그만 확인  
+grep "ERROR\|❌" bot.log
+```
+
+## 📊 모니터링
+
+봇은 다음과 같은 정보를 실시간으로 출력합니다:
+- 멘션 처리 현황
+- 자동 트윗 실행 상황  
+- 5분마다 운영 통계
+- 오류 발생 시 상세 정보
+
+## 🎓 추가 기능 개발
+
+현재 구조에서 쉽게 확장 가능한 기능들:
+- 마법사 배틀 시스템
+- 퀴즈 게임
+- 기숙사별 이벤트
+- 갈레온 상점 시스템
+- 주간/월간 통계
+
+---
+
+**교수님의 마지막 한 마디** 
+"학생 여러분, 호그와트에서의 모든 순간이 소중한 배움이 될 것입니다. 언제든 도움이 필요하시면 주저하지 마시고 말씀해주세요. 여러분의 성장을 응원하겠습니다!"
+
+*Mischief Managed!*
