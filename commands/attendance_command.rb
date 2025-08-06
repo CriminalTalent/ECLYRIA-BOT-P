@@ -16,7 +16,7 @@ class AttendanceCommand
   def execute
     # 1. 사용자 불러오기
     user = @sheet_manager.find_user(@user_id)
-    return reply("등록되지 않은 사용자입니다. [입학/이름]으로 등록해주세요.") if user.nil?
+    return reply("아직 학적부에 없는 학생입니다. [입학/이름]으로 등록해주세요.") if user.nil?
 
     # 2. 교수 시트에서 출석 기능 확인
     unless auto_push_enabled?(@sheet_manager, "출석기능")
@@ -45,7 +45,7 @@ class AttendanceCommand
     update_house_scores(@sheet_manager)
 
     # 7. 날씨 조언 포함 메시지 구성
-    message = "✅ #{@user_name}님의 출석이 확인되었습니다. +2갈레온, +1점이 지급되었습니다."
+    message = "#{@user_name}학생의 출석이 확인되었습니다. 2갈레온, 기숙사 점수 1점을 추가하겠습니다."
 
     if auto_push_enabled?(@sheet_manager, "출석 날씨 자동알림")
       weather = random_weather_message_with_style
