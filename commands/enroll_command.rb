@@ -3,12 +3,10 @@
 require 'date'
 
 class EnrollCommand
-  INITIAL_GALLEON = 20
-
-  def initialize(sheet, client, user_id, name)
-    @sheet = sheet
-    @client = client
-    @user_id = user_id
+  def initialize(sheet_manager, mastodon_client, sender, name)
+    @sheet_manager = sheet_manager
+    @mastodon_client = mastodon_client
+    @sender = sender
     @name = name
   end
 
