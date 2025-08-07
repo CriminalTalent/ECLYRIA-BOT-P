@@ -1,7 +1,7 @@
 # main.rb
 require_relative './mastodon_client'
 require_relative './sheet_manager'
-require_relative './professor_command_parser'
+require_relative './command_parser'
 
 require 'dotenv'
 Dotenv.load
