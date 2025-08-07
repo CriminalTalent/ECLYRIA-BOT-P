@@ -1,8 +1,9 @@
 # commands/enroll_command.rb
-
 require 'date'
 
 class EnrollCommand
+  INITIAL_GALLEON = 20
+
   def initialize(sheet_manager, mastodon_client, sender, name)
     @sheet_manager = sheet_manager
     @mastodon_client = mastodon_client
@@ -11,16 +12,16 @@ class EnrollCommand
   end
 
   def execute
-    user_sheet = @sheet.worksheet_by_title("사용자")
-    existing_row = find_user_row(user_sheet, @user_id)
+    user_sheet = @sheet_manager.worksheet_by_title("사용자")
+    existing_row = find_user_row(user_sheet, @sender)
 
     if existing_row
-      @client.reply(@user_id, "#{@name}님은 이미 입학하셨습니다.")
+      @mastodon_client.reply(@sender, "#{@name}님은 이미 입학하셨습니다.")
       return
     end
 
     new_row = [
-      @user_id,       # A: 마스토돈 ID
+      @sender,        # A: 마스토돈 ID
       @name,          # B: 이름
       INITIAL_GALLEON,# C: 갈레온
       "",             # D: 아이템
@@ -36,7 +37,7 @@ class EnrollCommand
     user_sheet.insert_rows(user_sheet.num_rows + 1, [new_row])
     user_sheet.save
 
-    @client.reply(@user_id, "#{@name}님, 입학을 확인했습니다. 열차에 탑승해 주세요.")
+    @mastodon_client.reply(@sender, "#{@name}님, 입학을 확인했습니다. 열차에 탑승해 주세요.")
   end
 
   private
@@ -48,4 +49,3 @@ class EnrollCommand
     nil
   end
 end
-
