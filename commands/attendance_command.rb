@@ -1,5 +1,4 @@
 # commands/attendance_command.rb
-
 require_relative '../professor_control'
 require_relative '../utils/weather_message'
 require_relative '../house_score_updater'
@@ -14,7 +13,7 @@ class AttendanceCommand
 
   def execute
     # 1. 사용자 불러오기
-    user = @sheet_manager.find_user(@user_id)
+    user = @sheet_manager.find_user(@sender)
     return reply("아직 학적부에 없는 학생입니다. [입학/이름]으로 등록해주세요.") if user.nil?
 
     # 2. 교수 시트에서 출석 기능 확인
@@ -36,15 +35,16 @@ class AttendanceCommand
     end
 
     # 5. 출석 처리
-    @sheet_manager.increment_user_value(@user_id, "갈레온", 2)
-    @sheet_manager.increment_user_value(@user_id, "개별 기숙사 점수", 1)
-    @sheet_manager.set_user_value(@user_id, "출석날짜", today)
+    @sheet_manager.increment_user_value(@sender, "갈레온", 2)
+    @sheet_manager.increment_user_value(@sender, "개별 기숙사 점수", 1)
+    @sheet_manager.set_user_value(@sender, "출석날짜", today)
 
     # 6. 기숙사 점수 반영
     update_house_scores(@sheet_manager)
 
     # 7. 날씨 조언 포함 메시지 구성
-    message = "#{@user_name}학생의 출석이 확인되었습니다. 2갈레온, 기숙사 점수 1점을 추가하겠습니다."
+    user_name = user["이름"] || @sender
+    message = "#{user_name}학생의 출석이 확인되었습니다. 2갈레온, 기숙사 점수 1점을 추가하겠습니다."
 
     if auto_push_enabled?(@sheet_manager, "출석 날씨 자동알림")
       weather = random_weather_message_with_style
@@ -58,6 +58,6 @@ class AttendanceCommand
   private
 
   def reply(message)
-    @client.reply(@user_id, message)
+    @mastodon_client.reply(@sender, message)
   end
 end
