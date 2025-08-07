@@ -2,7 +2,7 @@
 
 source 'https://rubygems.org'
 
-ruby '3.2.2' # 사용 중인 Ruby 버전 명시 (선택사항)
+ruby '3.0.2' # 사용 중인 Ruby 버전 명시 (선택사항)
 
 # 마스토돈 API
 gem 'mastodon-api', require: 'mastodon'
