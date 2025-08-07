@@ -6,11 +6,10 @@ require_relative '../house_score_updater'
 require 'date'
 
 class AttendanceCommand
-  def initialize(sheet_manager, mastodon_client, user_id, user_name)
+  def initialize(sheet_manager, mastodon_client, sender)
     @sheet_manager = sheet_manager
-    @client = mastodon_client
-    @user_id = user_id
-    @user_name = user_name
+    @mastodon_client = mastodon_client
+    @sender = sender
   end
 
   def execute
