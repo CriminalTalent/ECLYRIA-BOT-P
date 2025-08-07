@@ -4,10 +4,10 @@ require 'date'
 require_relative '../house_score_updater'
 
 class HomeworkCommand
-  def initialize(sheet, client, user_id)
-    @sheet = sheet
-    @client = client
-    @user_id = user_id
+  def initialize(sheet_manager, mastodon_client, sender)
+    @sheet_manager = sheet_manager
+    @mastodon_client = mastodon_client
+    @sender = sender
   end
 
   def execute
