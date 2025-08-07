@@ -1,5 +1,4 @@
 # commands/homework_command.rb
-
 require 'date'
 require_relative '../house_score_updater'
 
@@ -11,12 +10,12 @@ class HomeworkCommand
   end
 
   def execute
-    user_sheet = @sheet.worksheet_by_title("사용자")
-    house_sheet = @sheet.worksheet_by_title("기숙사점수")
-    user_row = find_user_row(user_sheet, @user_id)
+    user_sheet = @sheet_manager.worksheet_by_title("사용자")
+    house_sheet = @sheet_manager.worksheet_by_title("기숙사점수")
+    user_row = find_user_row(user_sheet, @sender)
 
     unless user_row
-      @client.reply(@user_id, "먼저 [입학/이름]으로 등록해주세요.")
+      @mastodon_client.reply(@sender, "먼저 [입학/이름]으로 등록해주세요.")
       return
     end
 
@@ -24,26 +23,23 @@ class HomeworkCommand
     last_homework_day = user_row[10]&.strip
 
     if last_homework_day == today
-      @client.reply(@user_id, "오늘은 이미 과제를 제출하셨습니다.")
+      @mastodon_client.reply(@sender, "오늘은 이미 과제를 제출하셨습니다.")
       return
     end
 
     # 갈레온 +5
     user_row[2] = user_row[2].to_i + 5
-
     # 점수 +3
     user_row[10] = user_row[10].to_i + 3
-
     # 과제 제출일 갱신
     user_row[11] = today
-
     user_sheet.save
 
     # 기숙사 점수 갱신
     house_name = user_row[6]&.strip
     update_house_score(house_sheet, house_name, 3) if house_name && !house_name.empty?
 
-    @client.reply(@user_id, "과제 제출 확인 하였습니다. 5갈레온과 기숙사 점수 3점을 지급하겠습니다. 수고하셨어요.")
+    @mastodon_client.reply(@sender, "과제 제출 확인 하였습니다. 5갈레온과 기숙사 점수 3점을 지급하겠습니다. 수고하셨어요.")
   end
 
   private
@@ -65,4 +61,3 @@ class HomeworkCommand
     end
   end
 end
-
