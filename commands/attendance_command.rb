@@ -1,6 +1,5 @@
 # commands/attendance_command.rb
 require_relative '../professor_control'
-require_relative '../utils/weather_message'
 require_relative '../house_score_updater'
 require 'date'
 
@@ -25,7 +24,7 @@ class AttendanceCommand
     current_time = Time.now
 
     # 3. 출석 중복 확인
-    if user["출석날짜"] == today
+    if user[:attendance_date] == today
       return reply("오늘은 이미 출석하셨습니다.")
     end
 
@@ -42,16 +41,9 @@ class AttendanceCommand
     # 6. 기숙사 점수 반영
     update_house_scores(@sheet_manager)
 
-    # 7. 날씨 조언 포함 메시지 구성
-    user_name = user["이름"] || @sender
+    # 7. 순수 출석 확인 메시지만 (날씨 제거)
+    user_name = user[:name] || @sender
     message = "#{user_name}학생의 출석이 확인되었습니다. 2갈레온, 기숙사 점수 1점을 추가하겠습니다."
-
-    if auto_push_enabled?(@sheet_manager, "출석 날씨 자동알림")
-      weather = random_weather_message_with_style
-      message = "#{weather[:text]}\n\n#{message}"
-    end
-
-    # 8. 마스토돈 푸시 전송
     reply(message)
   end
 
