@@ -83,6 +83,40 @@ class SheetManager
     update_values("사용자!A#{user[:row_index] + 1}:K#{user[:row_index] + 1}", [row_data])
     true
   end
+
+  # AttendanceCommand를 위한 메서드들
+  def increment_user_value(user_id, field, amount)
+    user = find_user(user_id)
+    return false unless user
+    
+    case field
+    when "갈레온"
+      update_user(user_id, galleons: user[:galleons] + amount)
+    when "개별 기숙사 점수"
+      update_user(user_id, house_score: user[:house_score] + amount)
+    else
+      false
+    end
+  end
+
+  def set_user_value(user_id, field, value)
+    user = find_user(user_id)
+    return false unless user
+    
+    case field
+    when "출석날짜"
+      update_user(user_id, attendance_date: value)
+    when "과제날짜"
+      update_user(user_id, last_bet_date: value) # 임시로 이 필드 사용
+    else
+      false
+    end
+  end
+
+  # HomeworkCommand를 위한 메서드
+  def add_user_row(user_data)
+    append_values("사용자!A:K", [user_data])
+  end
 end
 
 # 구식 워크시트 객체를 흉내내는 래퍼 클래스
