@@ -1,7 +1,5 @@
 # cron_tasks/evening_attendance_end.rb
-
 require_relative '../professor_control'
-require_relative '../push_notifier'
 
 EVENING_ATTENDANCE_MESSAGES = [
   "곧 하루가 저물어 갑니다. 아직 출석하지 않으셨다면 서둘러 주세요.",
@@ -23,7 +21,17 @@ EVENING_ATTENDANCE_MESSAGES = [
   "출석을 잊은 날도 괜찮지만, 남길 수 있다면 더 좋겠죠.",
   "오늘도 고생 많으셨습니다. 마지막으로 출석을 잊지 마세요.",
   "출석 마감 시간이 가까워졌습니다. 혹시 잊고 계셨다면 지금이 기회입니다.",
-  "출석 마감 알림입니다. 늦기 전에 오늘을 남겨주세요."
+  "출석 마감 알림입니다. 늦기 전에 오늘을 남겨주세요.",
+  "하루 종일 바쁘셨겠지만, 출석만큼은 꼭 챙겨주세요.",
+  "저녁 식사를 마치셨다면 출석도 함께 마무리해 보세요.",
+  "오늘 하루 어떠셨나요? 출석으로 하루를 정리해 보아요.",
+  "밤이 깊어지기 전에 출석부에 흔적을 남겨주세요.",
+  "하루의 마지막 의무이자 특권인 출석, 잊지 마세요.",
+  "잠자리에 들기 전 마지막으로 할 일이 하나 남았네요.",
+  "오늘도 무사히 보낸 하루에 감사하며 출석으로 마무리해요.",
+  "내일 아침을 맞기 전에 오늘을 출석으로 정리해 두세요.",
+  "기숙사 불빛이 하나둘 꺼져가네요. 출석은 마쳤나요?",
+  "달빛이 창가를 비추고 있어요. 오늘의 출석도 비춰주세요."
 ]
 
 def run_evening_attendance_end(sheet_manager, mastodon_client)
@@ -33,6 +41,5 @@ def run_evening_attendance_end(sheet_manager, mastodon_client)
   end
 
   message = EVENING_ATTENDANCE_MESSAGES.sample
-  PushNotifier.broadcast(mastodon_client, message)
+  mastodon_client.broadcast(message)
 end
-
