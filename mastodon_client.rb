@@ -1,5 +1,4 @@
 # mastodon_client.rb
-
 require 'mastodon'
 require 'uri'
 require 'json'
@@ -11,16 +10,29 @@ class MastodonClient
       base_url: base_url,
       bearer_token: token
     )
-    @streamer = Mastodon::Streaming::Client.new(
-      base_url: base_url,
-      bearer_token: token
+    
+    # Streaming 클라이언트 초기화를 지연시킴
+    @streamer = nil
+  end
+
+  # 스트리밍 클라이언트 초기화 (필요할 때만)
+  def get_streamer
+    @streamer ||= Mastodon::Streaming::Client.new(
+      base_url: @base_url,
+      bearer_token: @client.instance_variable_get(:@bearer_token)
     )
+  rescue => e
+    puts "[경고] 스트리밍 클라이언트 초기화 실패: #{e.message}"
+    nil
   end
 
   # 실시간 멘션 스트리밍 처리
   def stream_user(&block)
     puts "[마스토돈] 멘션 스트리밍 시작..."
-    @streamer.user do |event|
+    streamer = get_streamer
+    return unless streamer
+    
+    streamer.user do |event|
       if event.is_a?(Mastodon::Notification) && event.type == 'mention'
         block.call(event)
       end
@@ -31,12 +43,13 @@ class MastodonClient
     retry
   end
 
-  # 멘션에 답글 작성
+  # 멘션에 답글 작성 (frozen string 문제 해결)
   def reply(to_acct, message)
     begin
       puts "[마스토돈] → @#{to_acct} 에게 응답 전송"
+      status_text = "@#{to_acct} #{message}".dup
       @client.create_status(
-        "@#{to_acct} #{message}",
+        status_text,
         visibility: 'unlisted'
       )
     rescue => e
@@ -44,7 +57,7 @@ class MastodonClient
     end
   end
 
-  # 전체 공지용 푸시 (ex. 아침 출석 알림 등)
+  # 전체 공지용 푸시
   def broadcast(message)
     begin
       puts "[마스토돈] → 전체 공지 전송"
