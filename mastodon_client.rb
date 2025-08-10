@@ -44,13 +44,14 @@ class MastodonClient
   end
 
   # 멘션에 답글 작성 (frozen string 문제 해결)
-  def reply(to_acct, message)
+  def reply(to_acct, message, in_reply_to_id: nil)
     begin
       puts "[마스토돈] → @#{to_acct} 에게 응답 전송"
       status_text = "@#{to_acct} #{message}".dup
       @client.create_status(
         status_text,
-        visibility: 'unlisted'
+        visibility: 'unlisted',
+        in_reply_to_id: in_reply_to_id
       )
     rescue => e
       puts "[에러] 응답 전송 실패: #{e.message}"
@@ -68,5 +69,36 @@ class MastodonClient
     rescue => e
       puts "[에러] 공지 전송 실패: #{e.message}"
     end
+  end
+
+  # 일반 포스트 (전투봇용)
+  def say(message)
+    begin
+      puts "[마스토돈] → 일반 포스트 전송"
+      @client.create_status(
+        message,
+        visibility: 'public'
+      )
+    rescue => e
+      puts "[에러] 포스트 전송 실패: #{e.message}"
+    end
+  end
+
+  # DM 전송
+  def dm(to_acct, message)
+    begin
+      puts "[마스토돈] → @#{to_acct} DM 전송"
+      status_text = "@#{to_acct} #{message}".dup
+      @client.create_status(
+        status_text,
+        visibility: 'direct'
+      )
+    rescue => e
+      puts "[에러] DM 전송 실패: #{e.message}"
+    end
+  end
+
+  def me
+    @client.verify_credentials.acct
   end
 end
