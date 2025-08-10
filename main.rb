@@ -2,14 +2,19 @@
 require 'dotenv/load'
 require 'google/apis/sheets_v4'
 require 'googleauth'
+require 'rufus-scheduler'
 require 'set'  # Set 모듈 추가
 require_relative 'mastodon_client'
 require_relative 'sheet_manager'
 require_relative 'command_parser'
+require_relative 'cron_tasks/morning_attendance_push'
+require_relative 'cron_tasks/evening_attendance_end'
+require_relative 'cron_tasks/curfew_alert'
+require_relative 'cron_tasks/curfew_release'
 
 # 봇 시작 시간 기록
 BOT_START_TIME = Time.now
-puts "[전투봇] 실행 시작 (#{BOT_START_TIME.strftime('%H:%M:%S')})"
+puts "[교수봇] 실행 시작 (#{BOT_START_TIME.strftime('%H:%M:%S')})"
 
 # Google Sheets 서비스 초기화
 begin
@@ -36,10 +41,34 @@ mastodon = MastodonClient.new(
   token: ENV['MASTODON_TOKEN']
 )
 
-# 명령어 파서 초기화
-parser = CommandParser.new(mastodon, sheet_manager)
+# 스케줄러 시작
+scheduler = Rufus::Scheduler.new
 
-puts "📅 전투봇 스케줄러 없음 (전투 전용)"
+# 📌 매일 아침 9:00 - 날씨 + 출석 시작 안내
+scheduler.cron '0 9 * * *' do
+  puts "[스케줄러] 아침 9시 출석 안내 실행"
+  run_morning_attendance_push(sheet_manager, mastodon)
+end
+
+# 📌 매일 밤 22:00 - 출석 마감 안내
+scheduler.cron '0 22 * * *' do
+  puts "[스케줄러] 밤 10시 출석 마감 안내 실행"
+  run_evening_attendance_end(sheet_manager, mastodon)
+end
+
+# 📌 매일 새벽 2:00 - 통금 알림
+scheduler.cron '0 2 * * *' do
+  puts "[스케줄러] 새벽 2시 통금 알림 실행"
+  run_curfew_alert(sheet_manager, mastodon)
+end
+
+# 📌 매일 아침 6:00 - 통금 해제 안내
+scheduler.cron '0 6 * * *' do
+  puts "[스케줄러] 아침 6시 통금 해제 안내 실행"
+  run_curfew_release(sheet_manager, mastodon)
+end
+
+puts "📅 스케줄러 시작됨 (9시 출석 안내, 22시 마감 안내, 2시 통금, 6시 해제)"
 
 # 처리된 멘션 ID 추적 (중복 방지)
 processed_mentions = Set.new
@@ -71,8 +100,8 @@ mastodon.stream_user do |mention|
     puts "[처리] 새 멘션 ID #{mention_id}: #{mention_time.strftime('%H:%M:%S')} - @#{sender_full}"
     puts "[내용] #{content}"
     
-    # 멘션을 전투 파서로 전달
-    parser.handle(mention.status)
+    # 멘션을 교수 파서로 전달
+    ProfessorParser.parse(mastodon, sheet_manager, mention)
   rescue => e
     puts "[에러] 처리 중 예외 발생: #{e.message}"
     puts e.backtrace.first(5)
