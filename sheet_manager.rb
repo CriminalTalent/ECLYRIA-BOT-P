@@ -17,17 +17,26 @@ class SheetManager
   end
 
   def update_values(range, values)
+    puts "[DEBUG] 업데이트 시도: 범위=#{range}, 값=#{values.inspect}"
     value_range = Google::Apis::SheetsV4::ValueRange.new(values: values)
-    @service.update_spreadsheet_value(@sheet_id, range, value_range, value_input_option: 'USER_ENTERED')
+    result = @service.update_spreadsheet_value(@sheet_id, range, value_range, value_input_option: 'USER_ENTERED')
+    puts "[DEBUG] 업데이트 결과: #{result.updated_cells}개 셀 업데이트됨"
+    result
   rescue => e
     puts "시트 쓰기 오류: #{e.message}"
+    puts e.backtrace.first(3)
+    nil
   end
 
   def append_values(range, values)
+    puts "[DEBUG] 추가 시도: 범위=#{range}, 값=#{values.inspect}"
     value_range = Google::Apis::SheetsV4::ValueRange.new(values: values)
-    @service.append_spreadsheet_value(@sheet_id, range, value_range, value_input_option: 'USER_ENTERED')
+    result = @service.append_spreadsheet_value(@sheet_id, range, value_range, value_input_option: 'USER_ENTERED')
+    puts "[DEBUG] 추가 결과: #{result.updated_rows}개 행 추가됨"
+    result
   rescue => e
     puts "시트 추가 오류: #{e.message}"
+    nil
   end
 
   # 구식 google_drive gem 호환 메서드들
@@ -43,7 +52,7 @@ class SheetManager
       next if index == 0 # 헤더 스킵
       if row[0] == user_id
         return {
-          row_index: index + 1,
+          row_index: index,  # 0-based index (헤더 제외)
           id: row[0],
           name: row[1],
           galleons: row[2].to_i,
@@ -66,6 +75,11 @@ class SheetManager
     user = find_user(user_id)
     return false unless user
     
+    puts "[DEBUG] 업데이트 대상: 행#{user[:row_index]}, ID=#{user_id}"
+    
+    # Google Sheets는 1-based index, 헤더가 1행이므로 +1
+    sheet_row = user[:row_index] + 1
+    
     row_data = [
       user_id,
       data[:name] || user[:name],
@@ -80,14 +94,19 @@ class SheetManager
       data[:house_score] || user[:house_score]
     ]
     
-    update_values("사용자!A#{user[:row_index] + 1}:K#{user[:row_index] + 1}", [row_data])
-    true
+    range = "사용자!A#{sheet_row}:K#{sheet_row}"
+    puts "[DEBUG] 전체 행 업데이트: #{range}"
+    
+    result = update_values(range, [row_data])
+    result != nil
   end
 
   # AttendanceCommand를 위한 메서드들
   def increment_user_value(user_id, field, amount)
     user = find_user(user_id)
     return false unless user
+    
+    puts "[DEBUG] #{field} +#{amount} for #{user_id}"
     
     case field
     when "갈레온"
@@ -103,11 +122,13 @@ class SheetManager
     user = find_user(user_id)
     return false unless user
     
+    puts "[DEBUG] #{field} = #{value} for #{user_id}"
+    
     case field
     when "출석날짜"
       update_user(user_id, attendance_date: value)
     when "과제날짜"
-      update_user(user_id, last_bet_date: value) # 임시로 이 필드 사용
+      update_user(user_id, last_bet_date: value)
     else
       false
     end
@@ -168,6 +189,7 @@ class WorksheetWrapper
   end
 
   def insert_rows(at_row, rows_data)
+    puts "[DEBUG] WorksheetWrapper.insert_rows 호출됨: #{rows_data.inspect}"
     # 새 행을 추가하는 방식으로 구현
     range = "#{@title}!A#{at_row}"
     @sheet_manager.append_values(range, rows_data)
