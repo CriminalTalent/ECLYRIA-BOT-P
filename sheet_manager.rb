@@ -44,103 +44,129 @@ class SheetManager
     @worksheets_cache[title] ||= WorksheetWrapper.new(self, title)
   end
 
-  def find_user(user_id)
-    values = read_values("사용자!A:K")
+  def worksheet(title)
+    worksheet_by_title(title)
+  end
+
+  # 전투봇 호환 메서드들
+  def get_stat(user_id, column_name)
+    # user_id에서 @ 제거 (전투봇은 @를 포함해서 전달할 수 있음)
+    clean_user_id = user_id.gsub('@', '')
+    
+    values = read_values("사용자!A:Z")
     return nil if values.nil? || values.empty?
+    
+    headers = values[0]
+    id_index = headers.index("ID")
+    col_index = headers.index(column_name)
+    return nil unless id_index && col_index
     
     values.each_with_index do |row, index|
       next if index == 0 # 헤더 스킵
-      if row[0] == user_id
-        return {
-          row_index: index,  # 0-based index (헤더 제외)
-          id: row[0],
-          name: row[1],
-          galleons: row[2].to_i,
-          items: row[3] || "",
-          memo: row[4] || "",
-          house: row[5] || "",
-          last_bet_date: row[6] || "",
-          today_bet_count: row[7] || "",
-          attendance_date: row[8] || "",
-          last_tarot_date: row[9] || "",
-          house_score: row[10].to_i
-        }
+      # ID 필드에서 @ 제거해서 비교
+      row_id = (row[id_index] || "").gsub('@', '')
+      if row_id == clean_user_id
+        return row[col_index]
       end
     end
     nil
   end
 
-  # 사용자 데이터 업데이트
-  def update_user(user_id, data)
-    user = find_user(user_id)
-    return false unless user
+  def set_stat(user_id, column_name, value)
+    # user_id에서 @ 제거
+    clean_user_id = user_id.gsub('@', '')
     
-    puts "[DEBUG] 업데이트 대상: 행#{user[:row_index]}, ID=#{user_id}"
+    values = read_values("사용자!A:Z")
+    return false if values.nil? || values.empty?
     
-    # Google Sheets는 1-based index, 헤더가 1행이므로 +1
-    sheet_row = user[:row_index] + 1
+    headers = values[0]
+    id_index = headers.index("ID")
+    col_index = headers.index(column_name)
+    return false unless id_index && col_index
     
-    row_data = [
-      user_id,
-      data[:name] || user[:name],
-      data[:galleons] || user[:galleons],
-      data[:items] || user[:items],
-      data[:memo] || user[:memo],
-      data[:house] || user[:house],
-      data[:last_bet_date] || user[:last_bet_date],
-      data[:today_bet_count] || user[:today_bet_count],
-      data[:attendance_date] || user[:attendance_date],
-      data[:last_tarot_date] || user[:last_tarot_date],
-      data[:house_score] || user[:house_score]
-    ]
-    
-    range = "사용자!A#{sheet_row}:K#{sheet_row}"
-    puts "[DEBUG] 전체 행 업데이트: #{range}"
-    
-    result = update_values(range, [row_data])
-    result != nil
-  end
-
-  # AttendanceCommand를 위한 메서드들
-  def increment_user_value(user_id, field, amount)
-    user = find_user(user_id)
-    return false unless user
-    
-    puts "[DEBUG] #{field} +#{amount} for #{user_id}"
-    
-    case field
-    when "갈레온"
-      update_user(user_id, galleons: user[:galleons] + amount)
-    when "개별 기숙사 점수"
-      update_user(user_id, house_score: user[:house_score] + amount)
-    else
-      false
+    values.each_with_index do |row, index|
+      next if index == 0 # 헤더 스킵
+      row_id = (row[index] || "").gsub('@', '')
+      if row_id == clean_user_id
+        # Google Sheets는 1-based index
+        sheet_row = index + 1
+        column_letter = number_to_column_letter(col_index + 1)
+        range = "사용자!#{column_letter}#{sheet_row}"
+        
+        result = update_values(range, [[value]])
+        return result != nil
+      end
     end
+    false
   end
 
-  def set_user_value(user_id, field, value)
-    user = find_user(user_id)
-    return false unless user
+  def find_user(user_id)
+    clean_user_id = user_id.gsub('@', '')
     
-    puts "[DEBUG] #{field} = #{value} for #{user_id}"
+    values = read_values("사용자!A:Z")
+    return nil if values.nil? || values.empty?
     
-    case field
-    when "출석날짜"
-      update_user(user_id, attendance_date: value)
-    when "과제날짜"
-      update_user(user_id, last_bet_date: value)
-    else
-      false
+    headers = values[0]
+    values.each_with_index do |row, index|
+      next if index == 0 # 헤더 스킵
+      row_id = (row[0] || "").gsub('@', '')
+      if row_id == clean_user_id
+        user_data = {}
+        headers.each_with_index do |header, col_index|
+          user_data[header] = row[col_index]
+        end
+        return user_data
+      end
     end
+    nil
   end
 
-  # HomeworkCommand를 위한 메서드
-  def add_user_row(user_data)
-    append_values("사용자!A:K", [user_data])
+  # 조사 시트 관련 메서드
+  def find_investigation_data(target, kind)
+    values = read_values("조사!A:Z")
+    return nil if values.nil? || values.empty?
+    
+    headers = values[0]
+    target_index = headers.index("대상")
+    kind_index = headers.index("종류")
+    return nil unless target_index && kind_index
+    
+    values.each_with_index do |row, index|
+      next if index == 0 # 헤더 스킵
+      if row[target_index] == target
+        # 조사 종류가 "조사"일 경우 "DM조사"도 허용
+        if kind == "조사"
+          if ["조사", "DM조사"].include?(row[kind_index])
+            result = {}
+            headers.each_with_index { |header, col_index| result[header] = row[col_index] }
+            return result
+          end
+        else
+          if row[kind_index] == kind
+            result = {}
+            headers.each_with_index { |header, col_index| result[header] = row[col_index] }
+            return result
+          end
+        end
+      end
+    end
+    nil
+  end
+
+  private
+
+  def number_to_column_letter(col_num)
+    result = ""
+    while col_num > 0
+      col_num -= 1
+      result = ((col_num % 26) + 65).chr + result
+      col_num /= 26
+    end
+    result
   end
 end
 
-# 구식 워크시트 객체를 흉내내는 래퍼 클래스
+# 구식 워크시트 객체를 흉내내는 래퍼 클래스 (전투봇 호환용)
 class WorksheetWrapper
   def initialize(sheet_manager, title)
     @sheet_manager = sheet_manager
@@ -164,6 +190,11 @@ class WorksheetWrapper
     @data.length
   end
 
+  def rows
+    load_data
+    @data
+  end
+
   def [](row, col)
     load_data
     return nil if row < 1 || row > @data.length
@@ -171,34 +202,17 @@ class WorksheetWrapper
     @data[row-1][col-1]
   end
 
-  def []=(row, col, value)
-    load_data
-    # 행이나 열이 부족하면 확장
-    while @data.length < row
-      @data << []
-    end
-    while @data[row-1].length < col
-      @data[row-1] << ""
-    end
-    
-    @data[row-1][col-1] = value
-    
-    # 즉시 업데이트
-    cell_range = "#{@title}!#{column_letter(col)}#{row}"
-    @sheet_manager.update_values(cell_range, [[value]])
-  end
-
-  def insert_rows(at_row, rows_data)
-    puts "[DEBUG] WorksheetWrapper.insert_rows 호출됨: #{rows_data.inspect}"
-    # 새 행을 추가하는 방식으로 구현
-    range = "#{@title}!A#{at_row}"
-    @sheet_manager.append_values(range, rows_data)
+  def update_cell(row, col, value)
+    # Google Sheets API 호출
+    column_letter = number_to_column_letter(col)
+    range = "#{@title}!#{column_letter}#{row}"
+    @sheet_manager.update_values(range, [[value]])
     load_data # 데이터 새로고침
   end
 
   private
 
-  def column_letter(col_num)
+  def number_to_column_letter(col_num)
     result = ""
     while col_num > 0
       col_num -= 1
