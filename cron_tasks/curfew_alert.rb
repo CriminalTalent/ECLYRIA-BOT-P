@@ -1,18 +1,8 @@
 # cron_tasks/curfew_alert.rb
-
 require_relative '../professor_control'
-require_relative '../push_notifier'
 
-def run_curfew_alert(sheet_manager, mastodon_client)
-  # 교수 시트에서 푸시 여부 확인
-  unless auto_push_enabled?(sheet_manager, "새벽 통금 알람")
-    puts "[스킵] 새벽 통금 알람 기능이 OFF 상태입니다."
-    return
-  end
-
-  # 통금 메시지 구성 (랜덤 가능)
 CURFEW_MESSAGES = [
-   "지금은 통금 시간이랍니다. 하루를 마무리하며 편안히 쉬는 시간이 되었어요.",
+  "지금은 통금 시간이랍니다. 하루를 마무리하며 편안히 쉬는 시간이 되었어요.",
   "오늘도 수고 많았어요. 이제는 기숙사에서 조용히 휴식을 취해볼까요?",
   "늦은 밤에는 몸과 마음도 쉬어야 해요. 기숙사 방 안에서 편히 쉬세요.",
   "기숙사는 여러분을 위한 가장 안전한 공간입니다. 이제 돌아가 주세요.",
@@ -31,12 +21,25 @@ CURFEW_MESSAGES = [
   "책상에 앉아 하루를 돌아보며 조용한 시간을 가져보면 좋겠어요.",
   "지금은 여러분만의 시간을 가질 때입니다. 방 안에서 편히 머물러 주세요.",
   "창밖이 어두워졌네요. 이제는 기숙사 창문을 닫고 하루를 마무리합시다.",
-  "오늘도 좋은 하루였어요. 이제는 포근한 이불 속에서 쉽시다."
-  ]
+  "오늘도 좋은 하루였어요. 이제는 포근한 이불 속에서 쉽시다.",
+  "새벽 공기는 차가우니 따뜻한 곳에서 쉬는 게 좋겠어요.",
+  "하루 종일 고생한 여러분께 따뜻한 잠자리를 권해드려요.",
+  "밤이 깊어갑니다. 내일을 위해 충분한 휴식을 취하세요.",
+  "조용한 밤, 기숙사만큼 안전한 곳은 없답니다.",
+  "오늘 하루도 참 길었겠어요. 이제 마음 놓고 쉬어도 됩니다.",
+  "통금 시간에는 서로의 잠을 방해하지 않도록 조심해 주세요.",
+  "밤늦게까지 공부하느라 수고했어요. 이제는 잠시 쉬어가도 돼요.",
+  "기숙사 복도가 조용해졌네요. 모두들 편안한 밤 되세요.",
+  "내일 아침을 상쾌하게 맞으려면 지금은 쉬는 게 좋겠어요.",
+  "달이 높이 떴네요. 오늘 하루도 달처럼 둥글게 마무리해 보세요."
+]
 
- message = CURFEW_MESSAGES.sample
+def run_curfew_alert(sheet_manager, mastodon_client)
+  unless auto_push_enabled?(sheet_manager, "새벽 통금 알람")
+    puts "[스킵] 새벽 통금 알람 기능이 OFF 상태입니다."
+    return
+  end
 
-  # 전체 사용자에게 푸시 (or 공지 계정으로 전송)
-  PushNotifier.broadcast(mastodon_client, message)
+  message = CURFEW_MESSAGES.sample
+  mastodon_client.broadcast(message)
 end
-
