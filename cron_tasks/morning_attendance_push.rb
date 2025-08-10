@@ -1,13 +1,10 @@
 # cron_tasks/morning_attendance_push.rb
-
 require_relative '../professor_control'
-require_relative '../push_notifier'
-require_relative '../utils/weather_message'  # 날씨 메시지 제공 함수 포함
+require_relative '../utils/weather_message'
 
 MORNING_ATTENDANCE_MESSAGES = [
   "좋은 아침입니다. 오늘도 출석으로 하루를 시작해볼까요?",
   "하루의 시작은 가볍게 인사하는 것부터입니다. 출석해주세요.",
-  "햇살이 비치네요. 기지개 켜고, 출석도 잊지 마세요.",
   "기숙사 복도에서 아침 인사가 들려옵니다. 지금쯤 출석하실 시간이에요.",
   "오늘도 함께 하루를 시작합시다. 출석은 작은 약속이에요.",
   "마법 수업 전, 출석 체크 먼저 해주세요.",
@@ -19,12 +16,23 @@ MORNING_ATTENDANCE_MESSAGES = [
   "오늘은 어떤 일이 펼쳐질까요? 먼저 출석하고 시작해요.",
   "마법 같은 하루를 위해, 출석이라는 주문부터 외워볼까요?",
   "기숙사 생활은 출석부터 차곡차곡 쌓여간답니다.",
-  "살랑이는 바람과 함께 이름도 남겨주세요.",
   "새로운 하루, 새로운 기회. 오늘 하루도 시작해봅시다.",
   "오늘도 여러분의 하루를 응원합니다. 준비되셨나요?",
   "출석은 하루를 여는 열쇠랍니다. 문을 열어보세요.",
   "기숙사 공지판에 오늘의 이름들이 하나둘 모이고 있어요.",
-  "좋은 하루는 한 발 먼저 나아가는 것에서 시작됩니다."
+  "좋은 하루는 한 발 먼저 나아가는 것에서 시작됩니다.",
+  "커피 한 잔의 여유와 함께 출석도 잊지 마세요.",
+  "새벽 공기가 상쾌합니다. 오늘도 활기차게 출석부터 시작해요.",
+  "일어나자마자 해야 할 일이 있다는 건 참 행복한 일이에요. 출석하러 가볼까요?",
+  "교수님이 여러분을 기다리고 있습니다. 오늘도 함께해요.",
+  "하루 중 가장 조용한 시간이네요. 출석으로 활기를 불어넣어 보세요.",
+  "오늘 하루 어떤 이야기를 써내려갈지 출석부터 시작해 보아요.",
+  "새로운 하루의 첫 번째 약속, 출석으로 지켜보세요.",
+  "잠에서 깬 마음을 출석으로 완전히 깨워보는 건 어떨까요?",
+  "겨울 아침의 정적을 깨우며 출석으로 하루를 시작해요.",
+  "따뜻한 실내에서 시작하는 출석, 마음도 따뜻해지네요.",
+  "추운 날씨에도 변하지 않는 건 출석에 대한 마음이에요.",
+  "겨울 햇살처럼 따뜻한 출석으로 하루를 밝혀보세요."
 ]
 
 def run_morning_attendance_push(sheet_manager, mastodon_client)
@@ -33,11 +41,13 @@ def run_morning_attendance_push(sheet_manager, mastodon_client)
     return
   end
 
-  weather_info = random_weather_message_with_style # { text: "...", style: :tag }
+  # 겨울 날씨 메시지 가져오기
+  weather_info = random_weather_message_with_style
   attendance_msg = MORNING_ATTENDANCE_MESSAGES.sample
-
+  
+  # 날씨 + 출석 메시지 조합
   final_message = "#{weather_info[:text]}\n\n#{attendance_msg}"
 
-  PushNotifier.broadcast(mastodon_client, final_message)
+  puts "[DEBUG] 전송할 메시지: #{final_message}"
+  mastodon_client.broadcast(final_message)
 end
-
