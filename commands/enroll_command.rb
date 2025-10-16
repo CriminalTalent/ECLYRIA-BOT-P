@@ -7,45 +7,43 @@ class EnrollCommand
   def initialize(sheet_manager, mastodon_client, sender, name)
     @sheet_manager = sheet_manager
     @mastodon_client = mastodon_client
-    @sender = sender
+    @sender = sender.gsub('@', '')  # @domain 제거
     @name = name
   end
 
   def execute
-    user_sheet = @sheet_manager.worksheet_by_title("사용자")
-    existing_row = find_user_row(user_sheet, @sender)
-
-    if existing_row
+    # 기존 사용자 확인
+    existing_user = @sheet_manager.find_user(@sender)
+    
+    if existing_user
       @mastodon_client.reply(@sender, "#{@name}님은 이미 입학하셨습니다.")
       return
     end
 
-    new_row = [
-      @sender,        # A: 마스토돈 ID
+    # 1. 사용자 탭에 데이터 추가
+    user_row = [
+      @sender,        # A: ID
       @name,          # B: 이름
       INITIAL_GALLEON,# C: 갈레온
       "",             # D: 아이템
-      "",             # E: 메모
-      "",             # F: 기숙사 (빈칸)
-      "",             # G: 마지막베팅일
-      "",             # H: 오늘베팅횟수
-      "",             # I: 출석날짜
-      "",             # J: 마지막타로일
-      0               # K: 개별 기숙사 점수
+      "",             # E: 기숙사
+      ""              # F: 메모
     ]
+    
+    @sheet_manager.append_values("사용자!A:F", [user_row])
+    puts "[입학] 사용자 탭에 추가: #{@sender} (#{@name})"
 
-    user_sheet.insert_rows(user_sheet.num_rows + 1, [new_row])
-    user_sheet.save
+    # 2. 스탯 탭에 ID와 이름만 추가 (스탯은 DM이 직접 입력)
+    stat_row = [
+      @sender,        # A: ID
+      @name           # B: 이름
+      # C~G: 체력, 공격력, 방어력, 민첩, 행운은 DM이 직접 입력
+    ]
+    
+    @sheet_manager.append_values("스탯!A:B", [stat_row])
+    puts "[입학] 스탯 탭에 ID/이름만 추가: #{@sender} (#{@name})"
 
-    @mastodon_client.reply(@sender, "#{@name}님, 입학을 확인했습니다. 열차에 탑승해 주세요.")
-  end
-
-  private
-
-  def find_user_row(sheet, id)
-    (2..sheet.num_rows).each do |row|
-      return row if sheet[row, 1] == id
-    end
-    nil
+    # 3. 응답 메시지
+    @mastodon_client.reply(@sender, "#{@name}님, 입학을 환영합니다. 초기 갈레온 20을 지급하였습니다.")
   end
 end
