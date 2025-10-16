@@ -44,6 +44,6 @@ class EnrollCommand
     puts "[입학] 스탯 탭에 ID/이름만 추가: #{@sender} (#{@name})"
 
     # 3. 응답 메시지
-    @mastodon_client.reply(@sender, "#{@name}님, 입학을 환영합니다. 초기 갈레온 20을 지급하였습니다.")
+    @mastodon_client.reply(@sender, "#{@name}님, 입학을 환영합니다. 갈레온 20을 지급하였습니다.")
   end
 end
