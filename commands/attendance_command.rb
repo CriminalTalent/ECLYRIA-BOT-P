@@ -1,55 +1,64 @@
-# commands/attendance_command.rb
-require_relative '../professor_control'
-require_relative '../house_score_updater'
+# commands/homework_command.rb
 require 'date'
 
-class AttendanceCommand
+class HomeworkCommand
   def initialize(sheet_manager, mastodon_client, sender)
     @sheet_manager = sheet_manager
     @mastodon_client = mastodon_client
-    @sender = sender
+    @sender = sender.gsub('@', '')  # @domain 제거
   end
 
   def execute
-    # 1. 사용자 불러오기
+    # 1. 사용자 확인
     user = @sheet_manager.find_user(@sender)
-    return reply("아직 학적부에 없는 학생입니다. [입학/이름]으로 등록해주세요.") if user.nil?
-
-    # 2. 교수 시트에서 출석 기능 확인
-    unless auto_push_enabled?(@sheet_manager, "출석기능")
-      return reply("현재 출석 기능은 비활성화되어 있습니다.")
+    unless user
+      reply("아직 명부에 이름이 없구나. [입학/이름]으로 먼저 등록하고 오렴.")
+      return
     end
 
-    today = Date.today.to_s
-    current_time = Time.now
-
-    # 3. 출석 중복 확인
-    if user[:attendance_date] == today
-      return reply("오늘은 이미 출석하셨습니다.")
+    # 2. 과제 제출 처리 (무제한)
+    # 갈레온 +5
+    current_galleons = user[:galleons] || 0
+    new_galleons = current_galleons + 5
+    @sheet_manager.update_user(@sender, { galleons: new_galleons })
+    
+    # 3. 기숙사 점수 +3 (기숙사가 있을 경우)
+    if user[:house] && !user[:house].empty?
+      update_house_score(user[:house], 3)
     end
 
-    # 4. 출석 가능 시간 확인 (22:00 이전)
-    if current_time.hour >= 22
-      return reply("출석 마감 시간(22:00)을 지났습니다.")
-    end
-
-    # 5. 출석 처리
-    @sheet_manager.increment_user_value(@sender, "갈레온", 2)
-    @sheet_manager.increment_user_value(@sender, "개별 기숙사 점수", 1)
-    @sheet_manager.set_user_value(@sender, "출석날짜", today)
-
-    # 6. 기숙사 점수 반영
-    update_house_scores(@sheet_manager)
-
-    # 7. 순수 출석 확인 메시지만 (날씨 제거)
+    # 4. 응답 메시지
     user_name = user[:name] || @sender
-    message = "#{user_name}학생의 출석이 확인되었습니다. 2갈레온, 기숙사 점수 1점을 추가하겠습니다."
+    message = "#{user_name}학생, 과제를 잘 해왔구나. 정말 기특하단다. 갈레온 5개를 주마."
+    if user[:house] && !user[:house].empty?
+      message += " #{user[:house]} 기숙사에도 3점을 더해주마. 훌륭하구나."
+    end
+    
     reply(message)
+    puts "[과제] #{@sender} (#{user_name}) - 갈레온: #{current_galleons} → #{new_galleons}"
   end
 
   private
 
   def reply(message)
     @mastodon_client.reply(@sender, message)
+  end
+
+  def update_house_score(house_name, points)
+    # 기숙사 탭에서 해당 기숙사 찾기
+    values = @sheet_manager.read_values("기숙사!A:B")
+    return if values.nil? || values.empty?
+    
+    values.each_with_index do |row, index|
+      next if index == 0  # 헤더 스킵
+      if row[0] == house_name
+        current_score = (row[1] || 0).to_i
+        new_score = current_score + points
+        row_num = index + 1
+        @sheet_manager.update_values("기숙사!B#{row_num}", [[new_score]])
+        puts "[기숙사] #{house_name}: #{current_score} → #{new_score}"
+        break
+      end
+    end
   end
 end
