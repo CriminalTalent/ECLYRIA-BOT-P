@@ -16,7 +16,7 @@ class EnrollCommand
     existing_user = @sheet_manager.find_user(@sender)
     
     if existing_user
-      @mastodon_client.reply(@sender, "#{@name}님은 이미 입학하셨습니다.")
+      @mastodon_client.reply(@sender, "#{@name}학생은 이미 입학했어요.")
       return
     end
 
@@ -44,6 +44,6 @@ class EnrollCommand
     puts "[입학] 스탯 탭에 ID/이름만 추가: #{@sender} (#{@name})"
 
     # 3. 응답 메시지
-    @mastodon_client.reply(@sender, "#{@name}님, 입학을 환영합니다. 갈레온 20을 지급하였습니다.")
+    @mastodon_client.reply(@sender, "#{@name}님, 입학을 환영해요. 여기 학교 생활에 필요한 갈레온 20을 드릴게요.")
   end
 end
