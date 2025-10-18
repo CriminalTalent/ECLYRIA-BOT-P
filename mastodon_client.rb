@@ -61,10 +61,8 @@ class MastodonClient
       
       response = @client.create_status(
         status_text,
-        {
-          in_reply_to_id: reply_to_id,
-          visibility: 'public'
-        }
+        in_reply_to_id: reply_to_id,
+        visibility: 'unlisted'
       )
       puts "답장 전송 완료: #{message[0..50]}..."
       response
