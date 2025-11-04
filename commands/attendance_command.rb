@@ -1,9 +1,11 @@
-# commands/attendance_command.rb
+# /root/mastodon_bots/professor_bot/commands/attendance_command.rb
 require_relative '../utils/professor_control'
 require_relative '../utils/house_score_updater'
 require 'date'
 
 class AttendanceCommand
+  include HouseScoreUpdater
+
   def initialize(sheet_manager, mastodon_client, sender, status)
     @sheet_manager = sheet_manager
     @mastodon_client = mastodon_client
@@ -44,13 +46,18 @@ class AttendanceCommand
 
     # 7. 출석 확인 메시지
     user_name = user[:name] || @sender
-    message = "#{user_name}학생의 출석이 확인되었습니다. 2갈레온, 기숙사 점수 1점을 추가하겠습니다."
+    message = "#{user_name} 학생의 출석이 확인되었습니다. (2갈레온, 기숙사 점수 +1)"
     reply(message)
+  rescue => e
+    puts "[에러] AttendanceCommand 처리 중 예외 발생: #{e.message}"
+    puts e.backtrace
+    reply("출석 처리 중 오류가 발생했습니다.")
   end
 
   private
 
   def reply(message)
+    message = (message.to_s.empty?) ? "출석이 확인되었습니다." : message.dup
     @mastodon_client.reply(@status, message)
   end
 end
