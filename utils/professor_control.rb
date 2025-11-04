@@ -1,30 +1,21 @@
+# /root/mastodon_bots/professor_bot/utils/professor_control.rb
 def auto_push_enabled?(sheet_manager, feature_name)
-  values = sheet_manager.read_values("교수!A:D")
-  return false if values.nil? || values.empty?
-  
-  # 헤더 행 (1행)
+  sheet = sheet_manager.get_sheet("교수")
+  values = sheet_manager.get_values("교수!A1:C2")
   headers = values[0]
-  return false unless headers
-  
-  # 기능명 컬럼 찾기
-  feature_index = nil
-  
-  case feature_name
-  when "출석기능"
-    feature_index = headers.index("야간출석자동통톨") || 0
-  when "통금알림"
-    feature_index = headers.index("통금알람") || 1
-  when "통금해제알림"
-    feature_index = headers.index("통금해제알람") || 2
+  statuses = values[1]
+
+  headers.each_with_index do |header, idx|
+    next if header.nil?
+    if header.strip == feature_name
+      cell_value = statuses[idx]
+      # true/false (체크박스) 또는 ON/OFF(문자열) 모두 허용
+      return cell_value == true || cell_value.to_s.strip.upcase == "ON"
+    end
   end
-  
-  return false unless feature_index
-  
-  # 2행의 체크박스 값 확인
-  if values.length > 1 && values[1][feature_index]
-    checkbox_value = values[1][feature_index].to_s.upcase
-    return ["TRUE", "O", "YES", "Y", "ON"].include?(checkbox_value)
-  end
-  
+
+  false
+rescue => e
+  puts "[에러] auto_push_enabled? 확인 중 문제 발생: #{e.message}"
   false
 end
