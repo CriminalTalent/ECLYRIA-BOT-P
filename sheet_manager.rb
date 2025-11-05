@@ -1,4 +1,4 @@
-# sheet_manager.rb
+# /root/mastodon_bots/professor_bot/sheet_manager.rb
 require 'google/apis/sheets_v4'
 
 class SheetManager
@@ -8,6 +8,9 @@ class SheetManager
     @worksheets_cache = {}
   end
 
+  # =============================
+  # 기본 유틸
+  # =============================
   def read_values(range)
     @service.get_spreadsheet_values(@sheet_id, range).values
   rescue => e
@@ -38,67 +41,17 @@ class SheetManager
     nil
   end
 
-  def worksheet_by_title(title)
-    @worksheets_cache[title] ||= WorksheetWrapper.new(self, title)
-  end
-
-  def worksheet(title)
-    worksheet_by_title(title)
-  end
-
-  def get_stat(user_id, column_name)
-    clean_user_id = user_id.gsub('@', '')
-    
-    values = read_values("사용자!A:Z")
-    return nil if values.nil? || values.empty?
-    
-    headers = values[0]
-    id_index = headers.index("ID")
-    col_index = headers.index(column_name)
-    return nil unless id_index && col_index
-    
-    values.each_with_index do |row, index|
-      next if index == 0
-      row_id = (row[id_index] || "").gsub('@', '')
-      if row_id == clean_user_id
-        return row[col_index]
-      end
-    end
-    nil
-  end
-
-  def set_stat(user_id, column_name, value)
-    clean_user_id = user_id.gsub('@', '')
-    
-    values = read_values("사용자!A:Z")
-    return false if values.nil? || values.empty?
-    
-    headers = values[0]
-    id_index = headers.index("ID")
-    col_index = headers.index(column_name)
-    return false unless id_index && col_index
-    
-    values.each_with_index do |row, index|
-      next if index == 0
-      row_id = (row[id_index] || "").gsub('@', '')
-      if row_id == clean_user_id
-        col_letter = number_to_column_letter(col_index + 1)
-        range = "사용자!#{col_letter}#{index + 1}"
-        update_values(range, [[value]])
-        return true
-      end
-    end
-    false
-  end
-
+  # =============================
+  # 사용자 관련
+  # =============================
   def find_user(user_id)
     clean_user_id = user_id.gsub('@', '')
-    
-    values = read_values("사용자!A:K")
+
+    values = read_values("사용자!A:I")
     return nil if values.nil? || values.empty?
-    
+
     headers = values[0]
-    
+
     values.each_with_index do |row, index|
       next if index == 0
       row_id = (row[0] || "").gsub('@', '')
@@ -107,15 +60,13 @@ class SheetManager
           sheet_row: index + 1,
           id: row[0],
           name: row[1],
-          galleons: row[2].to_i,
+          galleons: (row[2] || 0).to_i,
           items: row[3] || "",
-          last_bet_date: row[4],
-          house: row[5],
-          hp: row[6].to_i,
-          attack: row[7].to_i,
-          attendance_date: row[8],
-          last_tarot_date: row[9],
-          house_score: row[10].to_i
+          house: row[4],
+          memo: row[5],
+          homework_date: row[6],
+          attendance_date: row[7],
+          house_score: (row[8] || 0).to_i
         }
       end
     end
@@ -125,26 +76,24 @@ class SheetManager
   def update_user(user_id, data = {})
     user = find_user(user_id)
     return false unless user
-    
+
     sheet_row = user[:sheet_row]
-    
+
     row_data = [
       data[:id] || user[:id],
       data[:name] || user[:name],
       data[:galleons] || user[:galleons],
       data[:items] || user[:items],
-      data[:last_bet_date] || user[:last_bet_date],
       data[:house] || user[:house],
-      data[:hp] || user[:hp],
-      data[:attack] || user[:attack],
+      data[:memo] || user[:memo],
+      data[:homework_date] || user[:homework_date],
       data[:attendance_date] || user[:attendance_date],
-      data[:last_tarot_date] || user[:last_tarot_date],
       data[:house_score] || user[:house_score]
     ]
-    
-    range = "사용자!A#{sheet_row}:K#{sheet_row}"
+
+    range = "사용자!A#{sheet_row}:I#{sheet_row}"
     puts "[DEBUG] 전체 행 업데이트: #{range}"
-    
+
     result = update_values(range, [row_data])
     result != nil
   end
@@ -152,9 +101,9 @@ class SheetManager
   def increment_user_value(user_id, field, amount)
     user = find_user(user_id)
     return false unless user
-    
+
     puts "[DEBUG] #{field} +#{amount} for #{user_id}"
-    
+
     case field
     when "갈레온"
       update_user(user_id, galleons: user[:galleons] + amount)
@@ -168,29 +117,32 @@ class SheetManager
   def set_user_value(user_id, field, value)
     user = find_user(user_id)
     return false unless user
-    
+
     puts "[DEBUG] #{field} = #{value} for #{user_id}"
-    
+
     case field
     when "출석날짜"
       update_user(user_id, attendance_date: value)
     when "과제날짜"
-      update_user(user_id, last_bet_date: value)
+      update_user(user_id, homework_date: value)
     else
       false
     end
   end
 
   def add_user_row(user_data)
-    append_values("사용자!A:K", [user_data])
+    append_values("사용자!A:I", [user_data])
   end
 
+  # =============================
+  # 아이템 / 조사 (향후 확장용)
+  # =============================
   def find_item(item_name)
     values = read_values("아이템!A:E")
     return nil if values.nil? || values.empty?
-    
+
     headers = values[0]
-    
+
     values.each_with_index do |row, index|
       next if index == 0
       if row[0] == item_name
@@ -209,7 +161,7 @@ class SheetManager
   def find_investigation(target, kind)
     values = read_values("조사!A:Z")
     return nil if values.nil? || values.empty?
-    
+
     headers = values[0]
     values.each_with_index do |row, index|
       next if index == 0
@@ -245,6 +197,9 @@ class SheetManager
   end
 end
 
+# =============================
+# WorksheetWrapper (옵션)
+# =============================
 class WorksheetWrapper
   def initialize(sheet_manager, title)
     @sheet_manager = sheet_manager
@@ -275,8 +230,8 @@ class WorksheetWrapper
   def [](row, col)
     load_data
     return nil if row < 1 || row > @data.length
-    return nil if col < 1 || col > (@data[row-1]&.length || 0)
-    @data[row-1][col-1]
+    return nil if col < 1 || col > (@data[row - 1]&.length || 0)
+    @data[row - 1][col - 1]
   end
 
   def []=(row, col, value)
@@ -284,21 +239,14 @@ class WorksheetWrapper
     while @data.length < row
       @data << []
     end
-    while @data[row-1].length < col
-      @data[row-1] << ""
+    while @data[row - 1].length < col
+      @data[row - 1] << ""
     end
-    
-    @data[row-1][col-1] = value
-    
+
+    @data[row - 1][col - 1] = value
+
     cell_range = "#{@title}!#{column_letter(col)}#{row}"
     @sheet_manager.update_values(cell_range, [[value]])
-  end
-
-  def update_cell(row, col, value)
-    column_letter = number_to_column_letter(col)
-    range = "#{@title}!#{column_letter}#{row}"
-    @sheet_manager.update_values(range, [[value]])
-    load_data
   end
 
   def insert_rows(at_row, rows_data)
@@ -309,16 +257,6 @@ class WorksheetWrapper
   end
 
   private
-
-  def number_to_column_letter(col_num)
-    result = ""
-    while col_num > 0
-      col_num -= 1
-      result = ((col_num % 26) + 65).chr + result
-      col_num /= 26
-    end
-    result
-  end
 
   def column_letter(col_num)
     result = ""
