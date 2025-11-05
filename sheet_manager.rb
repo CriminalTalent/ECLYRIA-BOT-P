@@ -1,270 +1,108 @@
 # /root/mastodon_bots/professor_bot/sheet_manager.rb
+# ==============================================
+# Google Sheets 연동 모듈
+# ==============================================
+
 require 'google/apis/sheets_v4'
+require 'googleauth'
 
 class SheetManager
-  def initialize(sheets_service, sheet_id)
-    @service = sheets_service
+  attr_reader :service, :sheet_id
+
+  def initialize(sheet_id)
     @sheet_id = sheet_id
-    @worksheets_cache = {}
+    @service = Google::Apis::SheetsV4::SheetsService.new
+    @service.client_options.application_name = "Professor Bot"
+    @service.authorization = authorize_service_account
   end
 
-  # =============================
-  # 기본 유틸
-  # =============================
-  def read_values(range)
-    @service.get_spreadsheet_values(@sheet_id, range).values
+  # ----------------------------------------------
+  # Google Service Account 인증
+  # ----------------------------------------------
+  def authorize_service_account
+    scope = ["https://www.googleapis.com/auth/spreadsheets"]
+    keyfile = File.expand_path("../credentials.json", __dir__)
+    Google::Auth::ServiceAccountCredentials.make_creds(
+      json_key_io: File.open(keyfile),
+      scope: scope
+    )
+  end
+
+  # ----------------------------------------------
+  # 시트 읽기 / 쓰기
+  # ----------------------------------------------
+  def read(range)
+    response = @service.get_spreadsheet_values(@sheet_id, range)
+    response.values || []
   rescue => e
-    puts "시트 읽기 오류: #{e.message}"
+    puts "[시트 읽기 실패] #{e.message}"
     []
   end
 
-  def update_values(range, values)
-    puts "[DEBUG] 업데이트 시도: 범위=#{range}, 값=#{values.inspect}"
+  def write(range, values)
     value_range = Google::Apis::SheetsV4::ValueRange.new(values: values)
-    result = @service.update_spreadsheet_value(@sheet_id, range, value_range, value_input_option: 'USER_ENTERED')
-    puts "[DEBUG] 업데이트 결과: #{result.updated_cells}개 셀 업데이트됨"
-    result
+    @service.update_spreadsheet_value(
+      @sheet_id,
+      range,
+      value_range,
+      value_input_option: 'USER_ENTERED'
+    )
   rescue => e
-    puts "시트 쓰기 오류: #{e.message}"
-    puts e.backtrace.first(3)
-    nil
+    puts "[시트 쓰기 실패] #{e.message}"
   end
 
-  def append_values(range, values)
-    puts "[DEBUG] 추가 시도: 범위=#{range}, 값=#{values.inspect}"
-    value_range = Google::Apis::SheetsV4::ValueRange.new(values: values)
-    result = @service.append_spreadsheet_value(@sheet_id, range, value_range, value_input_option: 'USER_ENTERED')
-    puts "[DEBUG] 추가 결과: #{result.updated_rows}개 행 추가됨"
-    result
-  rescue => e
-    puts "시트 추가 오류: #{e.message}"
-    nil
-  end
-
-  # =============================
-  # 사용자 관련
-  # =============================
+  # ----------------------------------------------
+  # 사용자 검색 (ID 기준)
+  # ----------------------------------------------
   def find_user(user_id)
-    clean_user_id = user_id.gsub('@', '')
-
-    values = read_values("사용자!A:I")
-    return nil if values.nil? || values.empty?
-
-    headers = values[0]
-
-    values.each_with_index do |row, index|
-      next if index == 0
-      row_id = (row[0] || "").gsub('@', '')
-      if row_id == clean_user_id
-        return {
-          sheet_row: index + 1,
-          id: row[0],
-          name: row[1],
-          galleons: (row[2] || 0).to_i,
-          items: row[3] || "",
-          house: row[4],
-          memo: row[5],
-          homework_date: row[6],
-          attendance_date: row[7],
-          house_score: (row[8] || 0).to_i
-        }
-      end
+    data = read('사용자!A2:H')
+    data.each do |row|
+      return {
+        id: row[0],
+        name: row[1],
+        galleon: row[2].to_i,
+        house: row[4],
+        memo: row[5],
+        homework_date: row[6],
+        attendance_date: row[7]
+      } if row[0].to_s.strip == user_id.to_s.strip
     end
     nil
   end
 
-  def update_user(user_id, data = {})
-    user = find_user(user_id)
-    return false unless user
+  # ----------------------------------------------
+  # 셀 값 변경 / 증가
+  # ----------------------------------------------
+  def set_user_value(user_id, column_name, value)
+    header = read('사용자!A1:H1').first
+    col_index = header.index(column_name)
+    return puts "[에러] '#{column_name}' 열을 찾을 수 없음" unless col_index
 
-    sheet_row = user[:sheet_row]
-
-    row_data = [
-      data[:id] || user[:id],
-      data[:name] || user[:name],
-      data[:galleons] || user[:galleons],
-      data[:items] || user[:items],
-      data[:house] || user[:house],
-      data[:memo] || user[:memo],
-      data[:homework_date] || user[:homework_date],
-      data[:attendance_date] || user[:attendance_date],
-      data[:house_score] || user[:house_score]
-    ]
-
-    range = "사용자!A#{sheet_row}:I#{sheet_row}"
-    puts "[DEBUG] 전체 행 업데이트: #{range}"
-
-    result = update_values(range, [row_data])
-    result != nil
-  end
-
-  def increment_user_value(user_id, field, amount)
-    user = find_user(user_id)
-    return false unless user
-
-    puts "[DEBUG] #{field} +#{amount} for #{user_id}"
-
-    case field
-    when "갈레온"
-      update_user(user_id, galleons: user[:galleons] + amount)
-    when "개별 기숙사 점수"
-      update_user(user_id, house_score: user[:house_score] + amount)
-    else
-      false
-    end
-  end
-
-  def set_user_value(user_id, field, value)
-    user = find_user(user_id)
-    return false unless user
-
-    puts "[DEBUG] #{field} = #{value} for #{user_id}"
-
-    case field
-    when "출석날짜"
-      update_user(user_id, attendance_date: value)
-    when "과제날짜"
-      update_user(user_id, homework_date: value)
-    else
-      false
-    end
-  end
-
-  def add_user_row(user_data)
-    append_values("사용자!A:I", [user_data])
-  end
-
-  # =============================
-  # 아이템 / 조사 (향후 확장용)
-  # =============================
-  def find_item(item_name)
-    values = read_values("아이템!A:E")
-    return nil if values.nil? || values.empty?
-
-    headers = values[0]
-
-    values.each_with_index do |row, index|
-      next if index == 0
-      if row[0] == item_name
-        return {
-          name: row[0],
-          description: row[1],
-          price: row[2].to_i,
-          for_sale: row[3],
-          category: row[4]
-        }
+    data = read('사용자!A2:H')
+    data.each_with_index do |row, i|
+      if row[0].to_s.strip == user_id.to_s.strip
+        cell = "#{('A'..'Z').to_a[col_index]}#{i + 2}"
+        write("사용자!#{cell}", [[value]])
+        return
       end
     end
-    nil
+    puts "[에러] 사용자 #{user_id} 를 찾을 수 없음"
   end
 
-  def find_investigation(target, kind)
-    values = read_values("조사!A:Z")
-    return nil if values.nil? || values.empty?
+  def increment_user_value(user_id, column_name, amount)
+    header = read('사용자!A1:H1').first
+    col_index = header.index(column_name)
+    return puts "[에러] '#{column_name}' 열을 찾을 수 없음" unless col_index
 
-    headers = values[0]
-    values.each_with_index do |row, index|
-      next if index == 0
-      if row[0] == target
-        if kind == "조사"
-          if ["조사", "DM조사"].include?(row[1])
-            result = {}
-            headers.each_with_index { |header, col_index| result[header] = row[col_index] }
-            return result
-          end
-        else
-          if row[1] == kind
-            result = {}
-            headers.each_with_index { |header, col_index| result[header] = row[col_index] }
-            return result
-          end
-        end
+    data = read('사용자!A2:H')
+    data.each_with_index do |row, i|
+      if row[0].to_s.strip == user_id.to_s.strip
+        current = row[col_index].to_i
+        new_val = current + amount
+        cell = "#{('A'..'Z').to_a[col_index]}#{i + 2}"
+        write("사용자!#{cell}", [[new_val]])
+        return
       end
     end
-    nil
-  end
-
-  private
-
-  def number_to_column_letter(col_num)
-    result = ""
-    while col_num > 0
-      col_num -= 1
-      result = ((col_num % 26) + 65).chr + result
-      col_num /= 26
-    end
-    result
-  end
-end
-
-# =============================
-# WorksheetWrapper (옵션)
-# =============================
-class WorksheetWrapper
-  def initialize(sheet_manager, title)
-    @sheet_manager = sheet_manager
-    @title = title
-    @data = nil
-    load_data
-  end
-
-  def load_data
-    @data = @sheet_manager.read_values("#{@title}!A:Z")
-    @data ||= []
-  end
-
-  def save
-    true
-  end
-
-  def num_rows
-    load_data
-    @data.length
-  end
-
-  def rows
-    load_data
-    @data
-  end
-
-  def [](row, col)
-    load_data
-    return nil if row < 1 || row > @data.length
-    return nil if col < 1 || col > (@data[row - 1]&.length || 0)
-    @data[row - 1][col - 1]
-  end
-
-  def []=(row, col, value)
-    load_data
-    while @data.length < row
-      @data << []
-    end
-    while @data[row - 1].length < col
-      @data[row - 1] << ""
-    end
-
-    @data[row - 1][col - 1] = value
-
-    cell_range = "#{@title}!#{column_letter(col)}#{row}"
-    @sheet_manager.update_values(cell_range, [[value]])
-  end
-
-  def insert_rows(at_row, rows_data)
-    puts "[DEBUG] WorksheetWrapper.insert_rows 호출됨: #{rows_data.inspect}"
-    range = "#{@title}!A#{at_row}"
-    @sheet_manager.append_values(range, rows_data)
-    load_data
-  end
-
-  private
-
-  def column_letter(col_num)
-    result = ""
-    while col_num > 0
-      col_num -= 1
-      result = ((col_num % 26) + 65).chr + result
-      col_num /= 26
-    end
-    result
   end
 end
