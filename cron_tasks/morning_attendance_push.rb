@@ -1,7 +1,7 @@
 # ============================================
 # cron_tasks/morning_attendance_push.rb
 # ============================================
-require_relative '../professor_control'
+require_relative '../utils/professor_control'
 require_relative '../utils/weather_message'
 
 MORNING_ATTENDANCE_MESSAGES = [
@@ -38,19 +38,19 @@ MORNING_ATTENDANCE_MESSAGES = [
 ]
 
 def run_morning_attendance_push(sheet_manager, mastodon_client)
-  unless auto_push_enabled?(sheet_manager, "아침출석자동툿")
+  # ✅ 모듈 명시적 호출
+  unless ProfessorControl.auto_push_enabled?(sheet_manager, "아침출석자동툿")
     puts "[스킵] 아침 출석 자동툿이 OFF 상태입니다."
     return
   end
 
-  # 겨울 날씨 메시지 가져오기
-  weather_info = random_weather_message_with_style
+  # ✅ 날씨 메시지 가져오기
+  weather_info = WeatherMessage.random_weather_message_with_style
   attendance_msg = MORNING_ATTENDANCE_MESSAGES.sample
-  
-  # 날씨 + 출석 메시지 조합
+
+  # ✅ 날씨 + 출석 메시지 조합
   final_message = "#{weather_info[:text]}\n\n#{attendance_msg}"
 
   puts "[DEBUG] 전송할 메시지: #{final_message}"
   mastodon_client.broadcast(final_message)
 end
-
