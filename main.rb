@@ -31,6 +31,7 @@ SHEET_ID = ENV['SHEET_ID']
 
 MENTION_ENDPOINT = "https://#{MASTODON_DOMAIN}/api/v1/notifications"
 POST_ENDPOINT = "https://#{MASTODON_DOMAIN}/api/v1/statuses"
+LAST_ID_FILE = File.expand_path('../last_professor_id.txt', __dir__)
 
 puts "[교수봇] 실행 시작 (#{Time.now.strftime('%H:%M:%S')})"
 
@@ -49,14 +50,18 @@ end
 # ----------------------------------------------
 # Mastodon Mentions 처리 함수
 # ----------------------------------------------
-def fetch_mentions
-  uri = URI("#{MENTION_ENDPOINT}?types[]=mention")
+def fetch_mentions(since_id = nil)
+  base_url = "#{MENTION_ENDPOINT}?types[]=mention&limit=20"
+  url = since_id ? "#{base_url}&since_id=#{since_id}" : base_url
+  uri = URI(url)
+
   req = Net::HTTP::Get.new(uri)
   req['Authorization'] = "Bearer #{ACCESS_TOKEN}"
 
   res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) do |http|
     http.request(req)
   end
+
   return [] unless res.is_a?(Net::HTTPSuccess)
   JSON.parse(res.body)
 rescue => e
@@ -78,26 +83,41 @@ rescue => e
 end
 
 # ----------------------------------------------
-# Mentions 감시 루프
+# Mentions 감시 루프 (since_id 적용, 429 대응)
 # ----------------------------------------------
-last_checked = Time.now - 60
+last_id = File.exist?(LAST_ID_FILE) ? File.read(LAST_ID_FILE).strip : nil
 loop do
-  mentions = fetch_mentions
-  mentions.each do |mention|
-    created_at = Time.parse(mention['created_at'])
-    next if created_at <= last_checked
+  begin
+    mentions = fetch_mentions(last_id)
+    mentions.sort_by! { |m| m['id'].to_i }
 
-    text = mention['status']['content'].gsub(/<[^>]*>/, '').strip
-    toot_id = mention['status']['id']
-    sender = mention['account']['acct']
+    mentions.each do |mention|
+      next unless mention['status']
+      created_at = Time.parse(mention['created_at'])
+      text = mention['status']['content'].gsub(/<[^>]*>/, '').strip
+      toot_id = mention['status']['id']
+      sender = mention['account']['acct']
 
-    puts "[MENTION] #{sender}: #{text}"
+      puts "[MENTION] #{sender}: #{text}"
 
-    # 명령어 실행
-    result = ProfessorParser.parse(sheet_manager, sender, text)
-    reply_to_mention(result, toot_id) if result && !result.empty?
+      result = ProfessorParser.parse(sheet_manager, sender, text)
+      reply_to_mention(result, toot_id) if result && !result.empty?
+
+      last_id = mention['id']
+      File.write(LAST_ID_FILE, last_id)
+    end
+
+  rescue => e
+    if e.message.include?('429') || e.message.include?('Too Many Requests')
+      puts "[경고] 429 Too Many Requests 발생 → 5분 대기"
+      sleep 300
+      retry
+    else
+      puts "[에러] Mentions 처리 중 오류: #{e.message}"
+      sleep 60
+      retry
+    end
   end
 
-  last_checked = Time.now
-  sleep 30
+  sleep 60 + rand(-5..5)
 end
