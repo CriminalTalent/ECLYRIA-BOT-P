@@ -19,8 +19,8 @@ class SheetManager
   def authorize_service_account
     scope = ["https://www.googleapis.com/auth/spreadsheets"]
 
-    # ✅ 현재 파일 기준으로 credentials.json 경로 고정
-    keyfile = File.expand_path("./credentials.json", __dir__)
+    # ✅ credentials.json 경로를 /root/mastodon_bots/professor_bot/로 고정
+    keyfile = File.expand_path("../credentials.json", __dir__)
 
     unless File.exist?(keyfile)
       raise "credentials.json 파일을 찾을 수 없습니다 (#{keyfile})"
@@ -36,13 +36,16 @@ class SheetManager
 
   public
 
+  # ✅ 시트 읽기 (에러 시 빈 배열 반환)
   def read(range)
-    @service.get_spreadsheet_values(@sheet_id, range).values
+    result = @service.get_spreadsheet_values(@sheet_id, range)
+    result.values || []
   rescue => e
     puts "[시트 읽기 실패] #{e.message}"
     []
   end
 
+  # ✅ 시트 쓰기
   def write(range, values)
     value_range = Google::Apis::SheetsV4::ValueRange.new(values: values)
     @service.update_spreadsheet_value(
@@ -53,5 +56,18 @@ class SheetManager
     )
   rescue => e
     puts "[시트 쓰기 실패] #{e.message}"
+  end
+
+  # ✅ 시트 행 추가 (로그 등 기록용)
+  def append(range, values)
+    body = Google::Apis::SheetsV4::ValueRange.new(values: [values])
+    @service.append_spreadsheet_value(
+      @sheet_id,
+      range,
+      body,
+      value_input_option: 'USER_ENTERED'
+    )
+  rescue => e
+    puts "[시트 추가 실패] #{e.message}"
   end
 end
