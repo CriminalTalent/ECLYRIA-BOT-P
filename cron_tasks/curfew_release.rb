@@ -1,7 +1,7 @@
 # ============================================
 # cron_tasks/curfew_release.rb
 # ============================================
-require_relative '../professor_control'
+require_relative '../utils/professor_control'
 require_relative '../utils/weather_message'
 
 CURFEW_RELEASE_MESSAGES = [
@@ -38,21 +38,18 @@ CURFEW_RELEASE_MESSAGES = [
 ]
 
 def run_curfew_release(sheet_manager, mastodon_client)
-  unless auto_push_enabled?(sheet_manager, "통금해제알람")
+  # ✅ 모듈 명시적 호출
+  unless ProfessorControl.auto_push_enabled?(sheet_manager, "통금해제알람")
     puts "[스킵] 통금 해제 알람이 OFF 상태입니다."
     return
   end
 
-  # 겨울 날씨 메시지 추가
-  weather_info = random_weather_message_with_style
+  # ✅ 날씨 메시지 불러오기
+  weather_info = WeatherMessage.random_weather_message_with_style
   release_msg = CURFEW_RELEASE_MESSAGES.sample
-  
-  # 날씨 + 통금 해제 메시지 조합
-  final_message = "#{weather_info[:text]}\n\n#{release_msg}"
 
-  puts "[DEBUG] 전송할 메시지: #{final_message}"
-  mastodon_client.broadcast(final_message)
-endn\n#{release_msg}"
+  # ✅ 날씨 + 통금 해제 메시지 조합
+  final_message = "#{weather_info[:text]}\n\n#{release_msg}"
 
   puts "[DEBUG] 전송할 메시지: #{final_message}"
   mastodon_client.broadcast(final_message)
