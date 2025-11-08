@@ -1,7 +1,7 @@
 # ============================================
 # cron_tasks/curfew_alert.rb (출석 마감 메시지 삭제, 통금만 남김)
 # ============================================
-require_relative '../professor_control'
+require_relative '../utils/professor_control'
 
 CURFEW_MESSAGES = [
   "이제 통금 시간이에요. 기숙사로 돌아가서 푹 쉬세요.",
@@ -37,12 +37,13 @@ CURFEW_MESSAGES = [
 ]
 
 def run_curfew_alert(sheet_manager, mastodon_client)
-  unless auto_push_enabled?(sheet_manager, "통금알람")
+  # ✅ ProfessorControl 모듈 메서드 직접 호출
+  unless ProfessorControl.auto_push_enabled?(sheet_manager, "통금알람")
     puts "[스킵] 통금알람이 OFF 상태입니다."
     return
   end
 
   message = CURFEW_MESSAGES.sample
   mastodon_client.broadcast(message)
+  puts "[통금알림] #{message}"
 end
-
