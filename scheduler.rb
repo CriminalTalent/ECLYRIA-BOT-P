@@ -26,11 +26,6 @@ scheduler.cron '0 7 * * *' do
   run_morning_attendance_push(sheet_manager, mastodon)
 end
 
-# 📌 매일 밤 22:00 - 출석 마감 안내
-scheduler.cron '0 22 * * *' do
-  run_evening_attendance_end(sheet_manager, mastodon)
-end
-
 # 📌 매일 새벽 2:00 - 통금 알림
 scheduler.cron '0 2 * * *' do
   run_curfew_alert(sheet_manager, mastodon)
