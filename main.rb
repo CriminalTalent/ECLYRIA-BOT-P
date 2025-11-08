@@ -1,4 +1,3 @@
-# /root/mastodon_bots/professor_bot/main.rb
 # ==============================================
 # Mastodon Professor Bot - Google Sheets 연동
 # ==============================================
@@ -15,7 +14,10 @@ require_relative 'sheet_manager'
 require_relative 'professor_command_parser'
 require_relative 'utils/house_score_updater'
 
-Dotenv.load(File.expand_path('../.env', __dir__))
+# ----------------------------------------------
+# .env 환경 변수 로드
+# ----------------------------------------------
+Dotenv.load(File.expand_path('.env', __dir__))
 
 MASTODON_DOMAIN = ENV['MASTODON_DOMAIN']
 ACCESS_TOKEN     = ENV['ACCESS_TOKEN']
@@ -93,6 +95,7 @@ end
 # Mentions 감시 루프 (since_id + 429 대응)
 # ----------------------------------------------
 last_id = File.exist?(LAST_ID_FILE) ? File.read(LAST_ID_FILE).strip : nil
+puts "[MENTION] 감시 시작..."
 
 loop do
   begin
