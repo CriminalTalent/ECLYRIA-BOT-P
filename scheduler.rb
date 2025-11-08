@@ -30,32 +30,84 @@ end
 # ----------------------------------------------
 scheduler = Rufus::Scheduler.new
 
-# ✅ 예외 발생 시에도 개별 작업이 전체 스케줄러를 중단시키지 않도록 보호
+# ✅ 시트의 ON/OFF 상태 읽기
+def get_professor_flags(sheet_manager)
+  values = sheet_manager.read('교수!A2:C2')
+  return [false, false, false] if values.nil? || values.empty?
+
+  flags = values.first.map do |val|
+    val.to_s.strip.casecmp('TRUE').zero? || val == '✅'
+  end
+
+  {
+    morning: flags[0],   # 아침출석자동툿
+    curfew_alert: flags[1],  # 통금알람
+    curfew_release: flags[2] # 통금해제알람
+  }
+rescue => e
+  puts "[에러] 시트 상태 읽기 실패: #{e.message}"
+  { morning: false, curfew_alert: false, curfew_release: false }
+end
+
+# ✅ 공통 안전 래퍼
 def safe_task(name)
   yield
 rescue => e
   puts "[에러][#{name}] #{e.class}: #{e.message}"
 end
 
+# ----------------------------------------------
 # 📌 매일 아침 7:00 - 출석 시작 안내
+# ----------------------------------------------
 scheduler.cron '0 7 * * *' do
-  safe_task('morning_attendance_push') do
-    run_morning_attendance_push(sheet_manager, mastodon)
+  flags = get_professor_flags(sheet_manager)
+  if flags[:morning]
+    safe_task('morning_attendance_push') do
+      run_morning_attendance_push(sheet_manager, mastodon)
+      puts "[실행됨] 아침출석자동툿"
+    end
+  else
+    puts "[건너뜀] 아침출석자동툿 비활성화됨"
   end
 end
 
+# ----------------------------------------------
+# 📌 매일 밤 22:00 - 출석 마감 안내
+# ----------------------------------------------
+scheduler.cron '0 22 * * *' do
+  safe_task('evening_attendance_end') do
+    run_evening_attendance_end(sheet_manager, mastodon)
+    puts "[실행됨] 출석마감자동툿"
+  end
+end
 
+# ----------------------------------------------
 # 📌 매일 새벽 2:00 - 통금 알림
+# ----------------------------------------------
 scheduler.cron '0 2 * * *' do
-  safe_task('curfew_alert') do
-    run_curfew_alert(sheet_manager, mastodon)
+  flags = get_professor_flags(sheet_manager)
+  if flags[:curfew_alert]
+    safe_task('curfew_alert') do
+      run_curfew_alert(sheet_manager, mastodon)
+      puts "[실행됨] 통금알람"
+    end
+  else
+    puts "[건너뜀] 통금알람 비활성화됨"
   end
 end
 
+# ----------------------------------------------
 # 📌 매일 아침 6:00 - 통금 해제 안내
+# ----------------------------------------------
 scheduler.cron '0 6 * * *' do
-  safe_task('curfew_release') do
-    run_curfew_release(sheet_manager, mastodon)
+  flags = get_professor_flags(sheet_manager)
+  if flags[:curfew_release]
+    safe_task('curfew_release') do
+      run_curfew_release(sheet_manager, mastodon)
+      puts "[실행됨] 통금해제알람"
+    end
+  else
+    puts "[건너뜀] 통금해제알람 비활성화됨"
   end
 end
 
