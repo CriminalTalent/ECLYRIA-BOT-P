@@ -1,4 +1,6 @@
+# ============================================
 # /root/mastodon_bots/professor_bot/commands/attendance_command.rb
+# ============================================
 require_relative '../utils/professor_control'
 require_relative '../utils/house_score_updater'
 require 'date'
@@ -14,26 +16,26 @@ class AttendanceCommand
   end
 
   def execute
-    # 1. 사용자 불러오기
+    # 1. 학생 정보 확인
     user = @sheet_manager.find_user(@sender)
-    return reply("아직 학적부에 없는 학생입니다. [입학/이름]으로 등록해주세요.") if user.nil?
+    return professor_reply("아직 학적부에 없는 학생이군요. [입학/이름]으로 등록을 마쳐주세요.") if user.nil?
 
-    # 2. 교수 시트에서 출석 기능 확인
-    unless auto_push_enabled?(@sheet_manager, "출석기능")
-      return reply("현재 출석 기능은 비활성화되어 있습니다.")
+    # 2. 출석 기능 상태 확인
+    unless ProfessorControl.auto_push_enabled?(@sheet_manager, "출석기능")
+      return professor_reply("지금은 출석 기능이 잠시 중단된 상태예요. 나중에 다시 시도해보세요.")
     end
 
     today = Date.today.to_s
     current_time = Time.now
 
-    # 3. 출석 중복 확인
+    # 3. 중복 출석 방지
     if user[:attendance_date] == today
-      return reply("오늘은 이미 출석하셨습니다.")
+      return professor_reply("오늘은 이미 출석을 완료했어요. 성실하군요, 훌륭합니다.")
     end
 
-    # 4. 출석 가능 시간 확인 (22:00 이전)
+    # 4. 출석 가능 시간 확인 (22시 이전)
     if current_time.hour >= 22
-      return reply("출석 마감 시간(22:00)을 지났습니다.")
+      return professor_reply("출석 마감 시간(22:00)이 지나버렸군요. 내일은 조금 더 일찍 오도록 해요.")
     end
 
     # 5. 출석 처리
@@ -44,20 +46,21 @@ class AttendanceCommand
     # 6. 기숙사 점수 반영
     update_house_scores(@sheet_manager)
 
-    # 7. 출석 확인 메시지
+    # 7. 교수님식 출석 멘트
     user_name = user[:name] || @sender
-    message = "#{user_name} 학생의 출석이 확인되었습니다. (2갈레온, 기숙사 점수 +1)"
-    reply(message)
+    message = "좋아요, #{user_name} 학생. 오늘도 성실히 출석했군요.\n(보상: 2갈레온, 기숙사 점수 +1)"
+    professor_reply(message)
+
   rescue => e
     puts "[에러] AttendanceCommand 처리 중 예외 발생: #{e.message}"
     puts e.backtrace
-    reply("출석 처리 중 오류가 발생했습니다.")
+    professor_reply("음… 잠시 오류가 생긴 것 같아요. 잠시 후 다시 시도해보세요.")
   end
 
   private
 
-  def reply(message)
-    message = (message.to_s.empty?) ? "출석이 확인되었습니다." : message.dup
+  def professor_reply(message)
+    message = message.to_s.empty? ? "출석이 확인되었습니다." : message.dup
     @mastodon_client.reply(@status, message)
   end
 end
