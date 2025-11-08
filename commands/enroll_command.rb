@@ -31,20 +31,18 @@ class EnrollCommand
     @sheet_manager.append_values("사용자!A:F", [user_row])
     puts "[입학] 사용자 등록 완료: #{@sender} (#{@name})"
 
-    # === 2️⃣ 스탯 탭 등록 ===
+    # === 2️⃣ 스탯 탭 등록 (간소화: HP / 민첩 / 행운 / 공격 / 방어) ===
     stat_row = [
       @sender,  # A: ID
       @name,    # B: 이름
-      1,        # C: 학년
-      5,        # D: 행운
-      5,        # E: 민첩
-      5,        # F: 지능
-      5,        # G: 매력
-      5,        # H: 의지
-      100       # I: HP
+      100,      # C: HP
+      5,        # D: 민첩
+      5,        # E: 행운
+      5,        # F: 공격
+      5         # G: 방어
     ]
-    @sheet_manager.append_values("스탯!A:I", [stat_row])
-    puts "[입학] 스탯 초기값 등록 완료: #{@sender}"
+    @sheet_manager.append_values("스탯!A:G", [stat_row])
+    puts "[입학] 스탯(HP/민첩/행운/공격/방어) 등록 완료: #{@sender}"
 
     # === 3️⃣ 조사상태 탭 등록 ===
     investigate_row = [
@@ -61,8 +59,7 @@ class EnrollCommand
     # === 4️⃣ 교수님식 입학 환영 메시지 ===
     welcome_message = <<~MSG
       #{@name} 학생, 호그와트에 온 걸 진심으로 환영합니다.
-      새로운 배움의 여정이 이제 막 시작되었군요.
-      (초기 보상: #{INITIAL_GALLEON} 갈레온)
+      새로운 배움의 여정이 이제 막 시작되었군요. 환영의 인사로 20갈레온을 드립니다.
     MSG
 
     @mastodon_client.reply(@status, welcome_message.strip, visibility: 'public')
