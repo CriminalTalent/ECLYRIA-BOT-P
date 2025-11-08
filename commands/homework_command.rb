@@ -1,8 +1,13 @@
-# commands/homework_command.rb
+# ============================================
+# /root/mastodon_bots/professor_bot/commands/homework_command.rb
+# ============================================
 require 'date'
 require_relative '../utils/house_score_updater'
+require_relative '../utils/professor_control'
 
 class HomeworkCommand
+  include HouseScoreUpdater
+
   def initialize(sheet_manager, mastodon_client, sender, status)
     @sheet_manager = sheet_manager
     @mastodon_client = mastodon_client
@@ -11,33 +16,44 @@ class HomeworkCommand
   end
 
   def execute
-    # 1. 사용자 확인
+    # 1️⃣ 학생 등록 여부 확인
     user = @sheet_manager.find_user(@sender)
     unless user
-      return reply("먼저 [입학/이름]으로 등록해주세요.")
+      return professor_reply("아직 학적부에 이름이 없군요. [입학/이름]으로 먼저 등록해주세요.")
     end
 
     today = Date.today.to_s
 
-    # 2. 과제 중복 확인
-    if user[:last_bet_date] == today
-      return reply("오늘은 이미 과제를 제출하셨습니다.")
+    # 2️⃣ 과제 중복 제출 확인
+    if user[:homework_date] == today
+      return professor_reply("오늘은 이미 과제를 제출했어요. 하루 한 번만 가능합니다.")
     end
 
-    # 3. 과제 제출 처리
+    # 3️⃣ 과제 제출 처리
     @sheet_manager.increment_user_value(@sender, "갈레온", 5)
     @sheet_manager.increment_user_value(@sender, "개별 기숙사 점수", 3)
     @sheet_manager.set_user_value(@sender, "과제날짜", today)
 
-    # 4. 기숙사 점수 갱신
+    # 4️⃣ 기숙사 점수 갱신
     update_house_scores(@sheet_manager)
 
-    reply("과제 제출 확인 하였습니다. 5갈레온과 기숙사 점수 3점을 지급하겠습니다. 수고하셨어요.")
+    # 5️⃣ 교수님식 피드백
+    user_name = user[:name] || @sender
+    message = <<~MSG
+      훌륭해요, #{user_name} 학생.
+      과제를 성실히 마쳤군요. 보상으로 5갈레온, 기숙사 점수 +3을 드립니다.
+    MSG
+
+    professor_reply(message.strip)
+  rescue => e
+    puts "[에러] HomeworkCommand 처리 중 예외 발생: #{e.message}"
+    puts e.backtrace.first(5)
+    professor_reply("음... 과제 제출 처리 중 문제가 생긴 것 같아요. 잠시 후 다시 시도해보세요.")
   end
 
   private
 
-  def reply(message)
+  def professor_reply(message)
     @mastodon_client.reply(@status, message)
   end
 end
