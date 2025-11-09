@@ -39,12 +39,23 @@ puts "[교수봇] 실행 시작 (#{Time.now.strftime('%H:%M:%S')})"
 # Google Sheets 연결
 # ============================================
 begin
-  creds = Google::Auth::ServiceAccountCredentials.make_creds({json_key_io: File.open(CRED_PATH), scope: ['https://www.googleapis.com/auth/spreadsheets']})
+  creds = Google::Auth::ServiceAccountCredentials.make_creds(
+    json_key_io: File.open(CRED_PATH),
+    scope: ['https://www.googleapis.com/auth/spreadsheets']
+  )
   creds.fetch_access_token!
   service = Google::Apis::SheetsV4::SheetsService.new
   service.authorization = creds
   sheet_manager = SheetManager.new(service, SHEET_ID)
   puts "[Google Sheets] 연결 성공"
+rescue ArgumentError
+  # Ruby 3.x에서 인자 해석 오류가 발생할 경우 안전 처리
+  creds = Google::Auth::ServiceAccountCredentials.make_creds({json_key_io: File.open(CRED_PATH), scope: ['https://www.googleapis.com/auth/spreadsheets']})
+  creds.fetch_access_token!
+  service = Google::Apis::SheetsV4::SheetsService.new
+  service.authorization = creds
+  sheet_manager = SheetManager.new(service, SHEET_ID)
+  puts "[Google Sheets] 연결 성공 (대체 방식)"
 rescue => e
   puts "[에러] Google Sheets 연결 실패: #{e.message}"
   exit 1
