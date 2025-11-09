@@ -1,133 +1,143 @@
-# ==============================================
-# Mastodon Professor Bot - Google Sheets 연동
-# ==============================================
-
+# ============================================
+# main.rb (Professor Bot - 안정화 완전판)
+# ============================================
+require 'bundler/setup'
+require 'dotenv'
+require 'time'
+require 'json'
+require 'ostruct'
 require 'google/apis/sheets_v4'
 require 'googleauth'
-require 'json'
 require 'net/http'
-require 'uri'
-require 'time'
-require 'dotenv'
-
+require_relative 'mastodon_client'
 require_relative 'sheet_manager'
 require_relative 'professor_command_parser'
-require_relative 'utils/house_score_updater'
 
-# ----------------------------------------------
-# .env 환경 변수 로드
-# ----------------------------------------------
-Dotenv.load(File.expand_path('.env', __dir__))
+Dotenv.load('.env')
 
-MASTODON_DOMAIN = ENV['MASTODON_DOMAIN']
-ACCESS_TOKEN     = ENV['ACCESS_TOKEN']
-SHEET_ID         = ENV['SHEET_ID']
-LAST_ID_FILE     = File.expand_path('last_mention_id.txt', __dir__)
-
-if MASTODON_DOMAIN.nil? || MASTODON_DOMAIN.strip.empty?
-  puts "[에러] MASTODON_DOMAIN 값이 비어 있습니다. .env 파일을 확인하세요."
-  exit
+# 환경 변수 검증
+required_envs = %w[MASTODON_DOMAIN ACCESS_TOKEN SHEET_ID GOOGLE_CREDENTIALS_PATH]
+missing = required_envs.select { |v| ENV[v].nil? || ENV[v].strip.empty? }
+if missing.any?
+  missing.each { |v| puts "[환경변수 누락] #{v}" }
+  puts "[오류] .env 파일을 확인해주세요."
+  exit 1
 end
 
-MENTION_ENDPOINT = "https://#{MASTODON_DOMAIN}/api/v1/notifications"
-POST_ENDPOINT    = "https://#{MASTODON_DOMAIN}/api/v1/statuses"
+DOMAIN      = ENV['MASTODON_DOMAIN']
+TOKEN       = ENV['ACCESS_TOKEN']
+SHEET_ID    = ENV['SHEET_ID']
+CRED_PATH   = ENV['GOOGLE_CREDENTIALS_PATH']
+LAST_ID_FILE = 'last_mention_id.txt'
+
+MENTION_ENDPOINT = "https://#{DOMAIN}/api/v1/notifications"
+POST_ENDPOINT    = "https://#{DOMAIN}/api/v1/statuses"
 
 puts "[교수봇] 실행 시작 (#{Time.now.strftime('%H:%M:%S')})"
 
-# ----------------------------------------------
+# ============================================
 # Google Sheets 연결
-# ----------------------------------------------
-sheet_manager = nil
+# ============================================
 begin
-  sheet_manager = SheetManager.new(SHEET_ID)
-  puts "Google Sheets 연결 성공"
+  scopes = ['https://www.googleapis.com/auth/spreadsheets']
+  creds = Google::Auth::ServiceAccountCredentials.make_creds(
+    json_key_io: File.open(CRED_PATH),
+    scope: scopes
+  )
+  creds.fetch_access_token!
+  service = Google::Apis::SheetsV4::SheetsService.new
+  service.authorization = creds
+  sheet_manager = SheetManager.new(service, SHEET_ID)
+  puts "[Google Sheets] 연결 성공"
 rescue => e
-  puts "Google Sheets 연결 실패: #{e.message}"
-  exit
+  puts "[에러] Google Sheets 연결 실패: #{e.message}"
+  exit 1
 end
 
-# ----------------------------------------------
-# Mastodon Mentions 처리 함수
-# ----------------------------------------------
+# ============================================
+# Mentions API 처리 함수
+# ============================================
 def fetch_mentions(since_id = nil)
-  base_url = "#{MENTION_ENDPOINT}?types[]=mention&limit=20"
-  url = since_id ? "#{base_url}&since_id=#{since_id}" : base_url
+  url = "#{MENTION_ENDPOINT}?types[]=mention&limit=20"
+  url += "&since_id=#{since_id}" if since_id
   uri = URI(url)
-
   req = Net::HTTP::Get.new(uri)
-  req['Authorization'] = "Bearer #{ACCESS_TOKEN}"
+  req['Authorization'] = "Bearer #{TOKEN}"
 
-  res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) do |http|
-    http.request(req)
-  end
-
-  if res.code == '429'
-    raise "429 Too Many Requests"
-  end
-
-  return [] unless res.is_a?(Net::HTTPSuccess)
-  JSON.parse(res.body)
+  res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http| http.request(req) }
+  [JSON.parse(res.body), res.each_header.to_h]
 rescue => e
   puts "[에러] 멘션 불러오기 실패: #{e.message}"
-  []
+  [[], {}]
 end
 
 def reply_to_mention(content, in_reply_to_id)
-  return if content.nil? || content.strip.empty?
-
   uri = URI(POST_ENDPOINT)
   req = Net::HTTP::Post.new(uri)
-  req['Authorization'] = "Bearer #{ACCESS_TOKEN}"
-  req.set_form_data(
-    'status' => content,
-    'in_reply_to_id' => in_reply_to_id,
-    'visibility' => 'unlisted'
-  )
+  req['Authorization'] = "Bearer #{TOKEN}"
+  req.set_form_data('status' => content, 'in_reply_to_id' => in_reply_to_id, 'visibility' => 'unlisted')
 
-  Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) do |http|
-    http.request(req)
-  end
+  Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http| http.request(req) }
 rescue => e
   puts "[에러] 답글 전송 실패: #{e.message}"
 end
 
-# ----------------------------------------------
-# Mentions 감시 루프 (since_id + 429 대응)
-# ----------------------------------------------
-last_id = File.exist?(LAST_ID_FILE) ? File.read(LAST_ID_FILE).strip : nil
+# ============================================
+# Mentions 감시 루프 (Rate-limit 완전 대응)
+# ============================================
+last_checked_id = File.exist?(LAST_ID_FILE) ? File.read(LAST_ID_FILE).strip : nil
+base_interval = 60
+cooldown_on_429 = 300
+loop_count = 0
+
 puts "[MENTION] 감시 시작..."
 
 loop do
   begin
-    mentions = fetch_mentions(last_id)
+    loop_count += 1
+    delay = base_interval + rand(-10..10)
+    puts "[루프 #{loop_count}] Mentions 확인 (지연 #{delay}s)"
+    mentions, headers = fetch_mentions(last_checked_id)
+
+    if headers['x-ratelimit-remaining'] && headers['x-ratelimit-remaining'].to_i < 1
+      reset_after = headers['x-ratelimit-reset'] ? headers['x-ratelimit-reset'].to_i : cooldown_on_429
+      puts "[경고] Rate limit 도달 → #{reset_after}초 대기"
+      sleep(reset_after)
+      next
+    end
+
     mentions.sort_by! { |m| m['id'].to_i }
-
     mentions.each do |mention|
+      next unless mention['type'] == 'mention'
       next unless mention['status']
-      created_at = Time.parse(mention['created_at']).getlocal
-      text = mention['status']['content'].gsub(/<[^>]*>/, '').strip
-      toot_id = mention['status']['id']
+
+      status = mention['status']
       sender = mention['account']['acct']
+      content = status['content'].gsub(/<[^>]*>/, '').strip
+      toot_id = status['id']
 
-      puts "[MENTION] #{created_at.strftime('%H:%M:%S')} - @#{sender}: #{text}"
+      puts "[MENTION] @#{sender}: #{content}"
+      begin
+        mention['status']  = OpenStruct.new(status)
+        mention['account'] = OpenStruct.new(mention['account'])
+        ProfessorParser.parse(nil, sheet_manager, mention)
+      rescue => e
+        puts "[에러] 명령어 실행 실패: #{e.message}"
+      end
 
-      result = ProfessorParser.parse(sheet_manager, sender, text)
-      reply_to_mention(result, toot_id) if result && !result.empty?
-
-      last_id = mention['id']
-      File.write(LAST_ID_FILE, last_id)
+      last_checked_id = mention['id']
+      File.write(LAST_ID_FILE, last_checked_id)
     end
 
   rescue => e
-    if e.message.include?('429') || e.message.include?('Too Many Requests')
-      puts "[경고] 429 Too Many Requests 발생 → 5분 대기"
-      sleep 300
+    if e.message.include?('429')
+      puts "[경고] 429 Too Many Requests → 5분 대기"
+      sleep(cooldown_on_429)
     else
-      puts "[에러] Mentions 처리 중 오류: #{e.message}"
-      sleep 60
+      puts "[에러] Mentions 루프 오류: #{e.class} - #{e.message}"
+      sleep(30)
     end
-    retry
   end
 
-  sleep 60 + rand(-5..5)
+  sleep(base_interval + rand(-10..10))
 end
