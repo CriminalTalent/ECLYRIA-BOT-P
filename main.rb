@@ -24,10 +24,10 @@ if missing.any?
   exit 1
 end
 
-DOMAIN      = ENV['MASTODON_DOMAIN']
-TOKEN       = ENV['ACCESS_TOKEN']
-SHEET_ID    = ENV['SHEET_ID']
-CRED_PATH   = ENV['GOOGLE_CREDENTIALS_PATH']
+DOMAIN       = ENV['MASTODON_DOMAIN']
+TOKEN        = ENV['ACCESS_TOKEN']
+SHEET_ID     = ENV['SHEET_ID']
+CRED_PATH    = ENV['GOOGLE_CREDENTIALS_PATH']
 LAST_ID_FILE = 'last_mention_id.txt'
 
 MENTION_ENDPOINT = "https://#{DOMAIN}/api/v1/notifications"
@@ -40,10 +40,10 @@ puts "[교수봇] 실행 시작 (#{Time.now.strftime('%H:%M:%S')})"
 # ============================================
 begin
   scopes = ['https://www.googleapis.com/auth/spreadsheets']
-  creds = Google::Auth::ServiceAccountCredentials.make_creds(
+  creds = Google::Auth::ServiceAccountCredentials.make_creds({
     json_key_io: File.open(CRED_PATH),
     scope: scopes
-  )
+  })
   creds.fetch_access_token!
   service = Google::Apis::SheetsV4::SheetsService.new
   service.authorization = creds
