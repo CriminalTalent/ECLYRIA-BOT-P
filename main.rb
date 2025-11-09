@@ -39,11 +39,7 @@ puts "[교수봇] 실행 시작 (#{Time.now.strftime('%H:%M:%S')})"
 # Google Sheets 연결
 # ============================================
 begin
-  scopes = ['https://www.googleapis.com/auth/spreadsheets']
-  creds = Google::Auth::ServiceAccountCredentials.make_creds({
-    json_key_io: File.open(CRED_PATH),
-    scope: scopes
-  })
+  creds = Google::Auth::ServiceAccountCredentials.make_creds({json_key_io: File.open(CRED_PATH), scope: ['https://www.googleapis.com/auth/spreadsheets']})
   creds.fetch_access_token!
   service = Google::Apis::SheetsV4::SheetsService.new
   service.authorization = creds
