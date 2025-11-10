@@ -122,9 +122,20 @@ class MastodonClient
   # 싱글턴 인스턴스
   # ================================
   def self.client
-    @instance ||= new(
-      base_url: ENV['MASTODON_BASE_URL'],
-      token: ENV['MASTODON_TOKEN']
-    )
+    # 환경 변수 폴백 처리
+    base_url = ENV['MASTODON_BASE_URL'] ||
+                (ENV['MASTODON_DOMAIN'] && "https://#{ENV['MASTODON_DOMAIN']}")
+  
+    token = ENV['MASTODON_TOKEN'] || ENV['ACCESS_TOKEN']
+  
+    raise "MASTODON_BASE_URL/DOMAIN 누락" if base_url.nil? || base_url.empty?
+    raise "MASTODON_TOKEN/ACCESS_TOKEN 누락" if token.nil? || token.empty?
+  
+    # 후행 슬래시 제거
+    base_url = base_url.sub(%r{/\z}, '')
+  
+    puts "[DEBUG] MastodonClient 초기화 base_url=#{base_url.inspect}"
+  
+    @instance ||= new(base_url: base_url, token: token)
   end
 end

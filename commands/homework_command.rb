@@ -1,6 +1,4 @@
-# ============================================
 # /root/mastodon_bots/professor_bot/commands/homework_command.rb
-# ============================================
 require 'date'
 require_relative '../utils/house_score_updater'
 require_relative '../utils/professor_control'
@@ -9,14 +7,15 @@ class HomeworkCommand
   include HouseScoreUpdater
 
   def initialize(sheet_manager, mastodon_client, sender, status)
-    @sheet_manager = sheet_manager
+    @sheet_manager   = sheet_manager
     @mastodon_client = mastodon_client
-    @sender = sender.gsub('@', '')
-    @status = status
+    @acct_full       = sender            # 멘션용 (원격 도메인까지 그대로)
+    @sender          = sender.split('@').first # 시트 조회용 (아이디만)
+    @status          = status
   end
 
   def execute
-    # 1️⃣ 학생 등록 여부 확인
+    # 1) 학생 등록 여부 확인
     user = @sheet_manager.find_user(@sender)
     unless user
       return professor_reply("아직 학적부에 이름이 없군요. [입학/이름]으로 먼저 등록해주세요.")
@@ -24,20 +23,20 @@ class HomeworkCommand
 
     today = Date.today.to_s
 
-    # 2️⃣ 과제 중복 제출 확인
+    # 2) 과제 중복 제출 확인 (시트에 해당 컬럼이 있을 때만 유효)
     if user[:homework_date] == today
       return professor_reply("오늘은 이미 과제를 제출했어요. 하루 한 번만 가능합니다.")
     end
 
-    # 3️⃣ 과제 제출 처리
+    # 3) 과제 제출 처리
     @sheet_manager.increment_user_value(@sender, "갈레온", 5)
-    @sheet_manager.increment_user_value(@sender, "개별 기숙사 점수", 3)
+    @sheet_manager.increment_user_value(@sender, "기숙사점수", 3)
     @sheet_manager.set_user_value(@sender, "과제날짜", today)
 
-    # 4️⃣ 기숙사 점수 갱신
+    # 4) 기숙사 점수 갱신
     update_house_scores(@sheet_manager)
 
-    # 5️⃣ 교수님식 피드백
+    # 5) 교수님식 피드백
     user_name = user[:name] || @sender
     message = <<~MSG
       훌륭해요, #{user_name} 학생.
@@ -54,6 +53,8 @@ class HomeworkCommand
   private
 
   def professor_reply(message)
-    @mastodon_client.reply(@status, message)
+    toot_id = @status.respond_to?(:id) ? @status.id : @status['id']
+    # ✅ mastodon_client.reply(acct, message, in_reply_to_id: …)
+    MastodonClient.client.reply(@acct_full, message, in_reply_to_id: toot_id)
   end
 end

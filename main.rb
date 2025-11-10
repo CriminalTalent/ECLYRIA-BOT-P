@@ -89,6 +89,36 @@ rescue => e
   puts "[에러] 답글 전송 실패: #{e.message}"
 end
 
+REPLY = proc do |content, in_reply_to_id|
+  # ⚡ 순서가 뒤집힌 경우 자동 수정
+  if in_reply_to_id.is_a?(String) && !in_reply_to_id.match?(/^\d+$/) &&
+     content.is_a?(String) && content.match?(/^\d+$/)
+    puts "[REPLY GUARD] 인자 순서가 뒤집혀 있어 교정합니다."
+    content, in_reply_to_id = in_reply_to_id, content
+  end
+
+  uri = URI(POST_ENDPOINT)
+  req = Net::HTTP::Post.new(uri)
+  req['Authorization'] = "Bearer #{TOKEN}"
+  req.set_form_data(
+    'status' => content,
+    'in_reply_to_id' => in_reply_to_id,
+    'visibility' => 'unlisted'
+  )
+
+  res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http| http.request(req) }
+
+  puts "[REPLY] code=#{res.code} body=#{res.body[0,200].inspect} to=#{in_reply_to_id}"
+  if res.code.to_i >= 300
+    puts "[에러] 답글 전송 실패 (HTTP #{res.code})"
+  else
+    puts "[REPLY OK] toot posted"
+  end
+rescue => e
+  puts "[에러] 답글 전송 예외: #{e.class} - #{e.message}"
+end
+
+
 # ============================================
 # Mentions 감시 루프 (Rate-limit 완전 대응)
 # ============================================
@@ -127,7 +157,7 @@ loop do
       begin
         mention['status']  = OpenStruct.new(status)
         mention['account'] = OpenStruct.new(mention['account'])
-        ProfessorParser.parse(nil, sheet_manager, mention)
+        ProfessorParser.parse(REPLY, sheet_manager, mention)
       rescue => e
         puts "[에러] 명령어 실행 실패: #{e.message}"
       end
