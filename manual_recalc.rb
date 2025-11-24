@@ -1,6 +1,5 @@
 #!/usr/bin/env ruby
 # manual_recalc.rb
-# sheet_manager를 사용한 기숙사 점수 재계산
 
 require 'bundler/setup'
 Bundler.require
@@ -9,10 +8,10 @@ require_relative 'sheet_manager'
 require_relative 'utils/house_score_updater'
 
 puts "=" * 60
-puts "기숙사 점수 수동 재계산"
+puts "House Score Recalculation"
 puts "=" * 60
 
-# Google Sheets 서비스 초기화
+# Google Sheets service init
 begin
   sheets_service = Google::Apis::SheetsV4::SheetsService.new
   credentials = Google::Auth::ServiceAccountCredentials.make_creds(
@@ -22,24 +21,24 @@ begin
   credentials.fetch_access_token!
   sheets_service.authorization = credentials
   
-  puts "✓ Google Sheets 연결 성공"
+  puts "Google Sheets connected"
 rescue => e
-  puts "✗ 연결 실패: #{e.message}"
+  puts "Connection failed: #{e.message}"
   exit 1
 end
 
-# SheetManager 초기화 (실제 교수봇과 동일한 방식)
+# SheetManager init
 sheet_manager = SheetManager.new(sheets_service, ENV["GOOGLE_SHEET_ID"])
 
-puts "✓ SheetManager 초기화 완료"
+puts "SheetManager initialized"
 puts
 
-# 기숙사 점수 업데이트 실행
-puts "기숙사 점수 재계산 시작..."
+# Update house scores
+puts "Recalculating house scores..."
 puts "-" * 60
 
 HouseScoreUpdater.update_house_scores(sheet_manager)
 
 puts "-" * 60
-puts "\n재계산 완료!"
-puts "\nGoogle Sheets에서 '기숙사' 시트를 확인하세요."
+puts "\nComplete!"
+puts "\nCheck the house sheet in Google Sheets."
