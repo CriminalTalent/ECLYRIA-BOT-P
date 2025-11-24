@@ -2,9 +2,9 @@
 # fix_sheet_data.rb
 # 사용자 시트의 잘못된 데이터를 정리하고 복구하는 스크립트
 
-require 'dotenv/load'
-require 'google/apis/sheets_v4'
-require 'googleauth'
+require 'bundler/setup'
+Bundler.require
+
 require 'date'
 
 puts "=" * 60
@@ -53,7 +53,7 @@ puts
 
 # 목표 헤더 구조 (A~K열)
 target_headers = [
-  "사용자 ID",
+  "아이디",
   "이름",
   "갈레온",
   "아이템",
@@ -66,8 +66,8 @@ target_headers = [
   "개별 기숙사 점수"
 ]
 
-# 인덱스 매핑
-id_idx = headers.index("사용자 ID") || headers.index("ID") || headers.index("아이디") || 0
+# 인덱스 매핑 (유연하게)
+id_idx = headers.index("아이디") || headers.index("사용자 ID") || headers.index("ID") || 0
 name_idx = headers.index("이름") || 1
 galleon_idx = headers.index("갈레온") || 2
 item_idx = headers.index("아이템") || 3
@@ -180,34 +180,10 @@ puts "\n" + "=" * 60
 puts "정리된 데이터: #{cleaned_data.length - 1}명"
 puts "=" * 60
 
-# 백업 시트 생성
-backup_sheet_name = "사용자_백업_#{Time.now.strftime('%Y%m%d_%H%M%S')}"
-puts "\n원본 데이터를 '#{backup_sheet_name}' 시트로 백업합니다..."
-
-# 새 시트 생성 요청
-begin
-  request_body = Google::Apis::SheetsV4::BatchUpdateSpreadsheetRequest.new(
-    requests: [
-      {
-        duplicate_sheet: {
-          source_sheet_id: 0,  # 사용자 시트 ID (보통 0번)
-          new_sheet_name: backup_sheet_name
-        }
-      }
-    ]
-  )
-  sheets_service.batch_update_spreadsheet(sheet_id, request_body)
-  puts "✓ 백업 완료"
-rescue => e
-  puts "⚠ 백업 실패 (계속 진행): #{e.message}"
-end
-
 # 사용자 확인
-puts "\n" + "=" * 60
-puts "정리된 데이터를 '사용자' 시트에 덮어쓰시겠습니까?"
-puts "=" * 60
+puts "\n정리된 데이터를 '사용자' 시트에 덮어쓰시겠습니까?"
+puts "(원본 데이터는 자동으로 백업되지 않습니다)"
 puts "이 작업은 되돌릴 수 없습니다!"
-puts "(백업은 '#{backup_sheet_name}' 시트에 저장되었습니다)"
 puts
 print "계속하려면 'yes'를 입력하세요: "
 confirmation = gets.chomp
@@ -217,9 +193,9 @@ unless confirmation.downcase == 'yes'
   exit 0
 end
 
-# 기존 데이터 지우기 (A~K열만)
+# 기존 데이터 지우기 (A~M열 전체)
 puts "\n기존 데이터 지우는 중..."
-clear_range = "'사용자'!A1:K#{data.length}"
+clear_range = "'사용자'!A1:M#{data.length + 10}"
 clear_request = Google::Apis::SheetsV4::ClearValuesRequest.new
 sheets_service.clear_values(sheet_id, clear_range, clear_request)
 puts "✓ 기존 데이터 삭제 완료"
@@ -241,9 +217,8 @@ puts "=" * 60
 puts "- 총 #{cleaned_data.length - 1}명의 사용자 데이터 정리"
 puts "- 잘못된 날짜 #{issues[:invalid_dates].length}건 수정"
 puts "- 이름 누락 #{issues[:missing_names].length}건 수정"
-puts "- 백업: '#{backup_sheet_name}' 시트"
 puts
 puts "다음 단계:"
 puts "1. Google Sheets에서 결과 확인"
-puts "2. 기숙사 점수 재계산: ruby recalculate_house_scores.rb"
-puts "3. 교수봇 재시작: pm2 restart professor-bot"
+puts "2. 기숙사 점수 재계산: bundle exec ruby recalculate_house_scores.rb"
+puts "3. 교수봇 재시작: pm2 restart professor_bot"
