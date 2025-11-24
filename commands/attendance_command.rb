@@ -1,6 +1,4 @@
-# ============================================
-# /root/mastodon_bots/professor_bot/commands/attendance_command.rb
-# ============================================
+# commands/attendance_command.rb
 require_relative '../utils/professor_control'
 require_relative '../utils/house_score_updater'
 require 'date'
@@ -21,7 +19,6 @@ class AttendanceCommand
     return professor_reply("아직 학적부에 없는 학생이군요. [입학/이름]으로 등록을 마쳐주세요.") if user.nil?
 
     # 2. 출석 기능 상태 확인
-    puts "[DEBUG] 출석 기능 상태 = #{ProfessorControl.auto_push_enabled?(@sheet_manager, '아침출석자동툿')}"
     unless ProfessorControl.auto_push_enabled?(@sheet_manager, "아침출석자동툿")
       return professor_reply("지금은 출석 기능이 잠시 중단된 상태예요. 나중에 다시 시도해보세요.")
     end
@@ -41,8 +38,10 @@ class AttendanceCommand
 
     # 5. 출석 처리
     @sheet_manager.increment_user_value(@sender, "갈레온", 2)
-    @sheet_manager.increment_user_value(@sender, "기숙사점수", 1)
+    @sheet_manager.increment_user_value(@sender, "개별 기숙사 점수", 1)  # 수정: 정확한 열 이름 사용
     @sheet_manager.set_user_value(@sender, "출석날짜", today)
+
+    puts "[출석] #{@sender} 출석 완료 - 갈레온 +2, 기숙사 점수 +1"
 
     # 6. 기숙사 점수 반영
     update_house_scores(@sheet_manager)
@@ -54,7 +53,7 @@ class AttendanceCommand
 
   rescue => e
     puts "[에러] AttendanceCommand 처리 중 예외 발생: #{e.message}"
-    puts e.backtrace
+    puts e.backtrace.first(5)
     professor_reply("음… 잠시 오류가 생긴 것 같아요. 잠시 후 다시 시도해보세요.")
   end
 
