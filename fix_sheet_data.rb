@@ -29,10 +29,16 @@ end
 
 sheet_id = ENV["GOOGLE_SHEET_ID"]
 
-# 사용자 시트 읽기
-range = "'사용자'!A:M"
-response = sheets_service.get_spreadsheet_values(sheet_id, range)
-data = response.values || []
+# 사용자 시트 읽기 (작은따옴표 제거)
+range = "사용자!A:M"
+begin
+  response = sheets_service.get_spreadsheet_values(sheet_id, range)
+  data = response.values || []
+rescue => e
+  puts "✗ 시트 읽기 실패: #{e.message}"
+  puts "시트 이름을 확인해주세요."
+  exit 1
+end
 
 if data.empty?
   puts "✗ 사용자 시트가 비어있습니다."
@@ -79,18 +85,25 @@ attendance_idx = headers.index("출석날짜") || 8
 tarot_idx = headers.index("마지막타로일") || headers.index("마지막타로날짜") || 9
 house_score_idx = headers.index("개별 기숙사 점수") || headers.index("기숙사점수") || 10
 
+puts "열 인덱스 매핑:"
+puts "  아이디: #{id_idx}"
+puts "  이름: #{name_idx}"
+puts "  갈레온: #{galleon_idx}"
+puts "  기숙사: #{house_idx}"
+puts "  출석날짜: #{attendance_idx}"
+puts "  개별 기숙사 점수: #{house_score_idx}"
+puts
+
 puts "데이터 분석 중..."
 puts
 
 # 문제점 분석
 issues = {
   invalid_dates: [],
-  missing_galleons: [],
-  missing_names: [],
-  negative_scores: []
+  missing_names: []
 }
 
-cleaned_data = [target_headers]  # 새 헤더
+cleaned_data = [target_headers]
 
 data[1..].each_with_index do |row, idx|
   next if row.nil? || row.empty?
@@ -109,46 +122,41 @@ data[1..].each_with_index do |row, idx|
   tarot = row[tarot_idx].to_s.strip
   house_score = row[house_score_idx].to_i
   
-  # 1. 잘못된 날짜 수정 (1905-07-18 같은 오류)
+  # 1. 잘못된 날짜 수정 (1905-07-18)
   if attendance.include?("1905-07")
-    issues[:invalid_dates] << "#{user_id}: 출석날짜 #{attendance}"
-    attendance = ""  # 초기화
+    issues[:invalid_dates] << "#{user_id}: 출석날짜"
+    attendance = ""
   end
   
   if last_bet.include?("1905-07")
-    issues[:invalid_dates] << "#{user_id}: 마지막베팅일 #{last_bet}"
+    issues[:invalid_dates] << "#{user_id}: 마지막베팅일"
     last_bet = ""
   end
   
   if tarot.include?("1905-07")
-    issues[:invalid_dates] << "#{user_id}: 마지막타로일 #{tarot}"
+    issues[:invalid_dates] << "#{user_id}: 마지막타로일"
     tarot = ""
   end
   
-  # 2. 갈레온 음수 확인
-  if galleon < 0
-    issues[:negative_scores] << "#{user_id}: 갈레온 #{galleon}"
-  end
-  
-  # 3. 이름 없음 확인
+  # 2. 이름 없음 확인
   if name.empty?
     issues[:missing_names] << user_id
-    name = user_id  # ID로 대체
+    name = user_id
   end
   
   # 정리된 행 생성 (A~K열만)
   cleaned_row = [
-    user_id,        # A: 사용자 ID
-    name,           # B: 이름
-    galleon,        # C: 갈레온
-    items,          # D: 아이템
-    memo,           # E: 메모
-    house,          # F: 기숙사
-    last_bet,       # G: 마지막베팅일
-    bet_count,      # H: 오늘베팅횟수
-    attendance,     # I: 출석날짜
-    tarot,          # J: 마지막타로일
-    house_score     # K: 개별 기숙사 점수
+    user_id,
+    name,
+    galleon,
+    items,
+    memo,
+    house,
+    last_bet,
+    bet_count,
+    attendance,
+    tarot,
+    house_score
   ]
   
   cleaned_data << cleaned_row
@@ -161,19 +169,12 @@ puts "=" * 60
 
 if issues[:invalid_dates].any?
   puts "\n[잘못된 날짜] #{issues[:invalid_dates].length}건"
-  issues[:invalid_dates].first(5).each { |issue| puts "  - #{issue}" }
-  puts "  ... 총 #{issues[:invalid_dates].length}건" if issues[:invalid_dates].length > 5
+  issues[:invalid_dates].each { |issue| puts "  - #{issue}" }
 end
 
 if issues[:missing_names].any?
   puts "\n[이름 누락] #{issues[:missing_names].length}건"
-  issues[:missing_names].first(5).each { |id| puts "  - #{id}" }
-  puts "  ... 총 #{issues[:missing_names].length}건" if issues[:missing_names].length > 5
-end
-
-if issues[:negative_scores].any?
-  puts "\n[음수 갈레온] #{issues[:negative_scores].length}건"
-  issues[:negative_scores].each { |issue| puts "  - #{issue}" }
+  issues[:missing_names].each { |id| puts "  - #{id}" }
 end
 
 puts "\n" + "=" * 60
@@ -182,8 +183,8 @@ puts "=" * 60
 
 # 사용자 확인
 puts "\n정리된 데이터를 '사용자' 시트에 덮어쓰시겠습니까?"
-puts "(원본 데이터는 자동으로 백업되지 않습니다)"
-puts "이 작업은 되돌릴 수 없습니다!"
+puts "WARNING: 이 작업은 되돌릴 수 없습니다!"
+puts "Google Sheets에서 수동으로 시트를 복사해서 백업하는 것을 권장합니다."
 puts
 print "계속하려면 'yes'를 입력하세요: "
 confirmation = gets.chomp
@@ -193,23 +194,33 @@ unless confirmation.downcase == 'yes'
   exit 0
 end
 
-# 기존 데이터 지우기 (A~M열 전체)
+# 기존 데이터 지우기
 puts "\n기존 데이터 지우는 중..."
-clear_range = "'사용자'!A1:M#{data.length + 10}"
+clear_range = "사용자!A1:M1000"
 clear_request = Google::Apis::SheetsV4::ClearValuesRequest.new
-sheets_service.clear_values(sheet_id, clear_range, clear_request)
-puts "✓ 기존 데이터 삭제 완료"
+begin
+  sheets_service.clear_values(sheet_id, clear_range, clear_request)
+  puts "✓ 기존 데이터 삭제 완료"
+rescue => e
+  puts "✗ 데이터 삭제 실패: #{e.message}"
+  exit 1
+end
 
 # 정리된 데이터 쓰기
 puts "정리된 데이터 쓰는 중..."
 value_range = Google::Apis::SheetsV4::ValueRange.new(values: cleaned_data)
-sheets_service.update_spreadsheet_value(
-  sheet_id,
-  "'사용자'!A1",
-  value_range,
-  value_input_option: 'USER_ENTERED'
-)
-puts "✓ 데이터 쓰기 완료"
+begin
+  sheets_service.update_spreadsheet_value(
+    sheet_id,
+    "사용자!A1",
+    value_range,
+    value_input_option: 'USER_ENTERED'
+  )
+  puts "✓ 데이터 쓰기 완료"
+rescue => e
+  puts "✗ 데이터 쓰기 실패: #{e.message}"
+  exit 1
+end
 
 puts "\n" + "=" * 60
 puts "시트 정리 완료!"
