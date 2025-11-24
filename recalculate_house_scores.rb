@@ -2,9 +2,8 @@
 # recalculate_house_scores.rb
 # 기숙사 점수를 수동으로 재계산하는 스크립트
 
-require 'dotenv/load'
-require 'google/apis/sheets_v4'
-require 'googleauth'
+require 'bundler/setup'
+Bundler.require
 
 puts "=" * 60
 puts "기숙사 점수 재계산 스크립트"
