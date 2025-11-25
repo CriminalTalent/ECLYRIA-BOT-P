@@ -1,96 +1,61 @@
-# restore_house_scores_by_date.rb (환경변수명 수정 버전)
+# restore_house_scores_by_date.rb
 require 'bundler/setup'
 Bundler.require
-
-# .env 파일 로드
 require 'dotenv'
 Dotenv.load('.env')
-
 require 'date'
 
 puts "=========================================="
 puts "개별 기숙사 점수 복구 (출석날짜 기반)"
 puts "=========================================="
 
-# 환경변수 확인 (SHEET_ID 또는 GOOGLE_SHEET_ID)
 SHEET_ID = ENV["SHEET_ID"] || ENV["GOOGLE_SHEET_ID"]
 
 unless SHEET_ID
   puts "[오류] SHEET_ID 환경변수가 설정되지 않았습니다."
-  puts ".env 파일을 확인하세요."
-  puts "\n현재 디렉토리: #{Dir.pwd}"
-  puts ".env 파일 존재 여부: #{File.exist?('.env')}"
   exit
 end
 
 puts "[확인] SHEET_ID: #{SHEET_ID}"
 
-# credentials.json 파일 확인
 unless File.exist?('credentials.json')
   puts "[오류] credentials.json 파일을 찾을 수 없습니다."
-  puts "현재 디렉토리: #{Dir.pwd}"
   exit
 end
 
 puts "[확인] credentials.json 파일 존재"
 
-# Google Sheets 서비스 초기화
 begin
   sheets_service = Google::Apis::SheetsV4::SheetsService.new
-  
-  # 서비스 계정 인증
   credentials = Google::Auth::ServiceAccountCredentials.make_creds(
     json_key_io: File.open('credentials.json'),
     scope: Google::Apis::SheetsV4::AUTH_SPREADSHEETS
   )
   
   puts "[확인] 인증 정보 로드 완료"
-  
   credentials.fetch_access_token!
   puts "[확인] 액세스 토큰 획득 완료"
-  
   sheets_service.authorization = credentials
-  
-  # 스프레드시트 정보 가져오기
   spreadsheet = sheets_service.get_spreadsheet(SHEET_ID)
   puts "[성공] Google Sheets 연결: #{spreadsheet.properties.title}"
-  
-rescue Google::Apis::ClientError => e
-  puts "[실패] Google API 오류: #{e.message}"
-  puts "상태 코드: #{e.status_code}"
-  puts "\n가능한 원인:"
-  puts "1. SHEET_ID가 잘못되었습니다."
-  puts "2. 서비스 계정에 시트 접근 권한이 없습니다."
-  puts "3. credentials.json 파일이 올바르지 않습니다."
-  exit
 rescue => e
-  puts "[실패] Google Sheets 연결 실패: #{e.class} - #{e.message}"
-  puts "\n에러 상세:"
-  puts e.backtrace.first(5)
+  puts "[실패] #{e.class}: #{e.message}"
   exit
 end
 
-# 사용자 시트 읽기 및 출석 횟수 계산
 def calculate_scores_from_user_sheet(service, sheet_id)
   puts "\n[작업] 사용자 시트 읽기 중..."
-  
   range = "사용자!A:K"
   response = service.get_spreadsheet_values(sheet_id, range)
   values = response.values || []
   
-  if values.empty?
-    puts "[오류] 사용자 시트가 비어있습니다."
-    return {}
-  end
+  return {} if values.empty?
   
   header = values[0]
-  puts "[확인] 사용자 시트 헤더: #{header.inspect}"
   puts "[확인] 총 #{values.size - 1}명의 사용자 데이터 발견"
   
-  # 열 인덱스 (0-based)
-  attendance_col = 8  # I열 - 출석날짜
-  homework_col = 6    # G열 - 과제날짜
-  
+  attendance_col = 8
+  homework_col = 6
   scores = {}
   
   values[1..].each_with_index do |row, idx|
@@ -101,14 +66,10 @@ def calculate_scores_from_user_sheet(service, sheet_id)
     house = (row[5] || "").to_s.strip
     current_score = (row[10] || 0).to_i
     
-    # 출석날짜가 있으면 1점
     attendance_date = (row[attendance_col] || "").to_s.strip
     attendance_score = attendance_date.empty? ? 0 : 1
-    
-    # 과제날짜 확인
     homework_date = (row[homework_col] || "").to_s.strip
     homework_score = homework_date.empty? ? 0 : 3
-    
     total_score = attendance_score + homework_score
     
     scores[user_id] = {
@@ -132,12 +93,10 @@ def calculate_scores_from_user_sheet(service, sheet_id)
   puts "\n[계산 완료] #{scores.size}명 처리"
   scores
 rescue => e
-  puts "[오류] 사용자 시트 읽기 실패: #{e.message}"
-  puts e.backtrace.first(3)
+  puts "[오류] #{e.message}"
   {}
 end
 
-# 점수 업데이트
 def update_scores(service, sheet_id, users_data)
   puts "\n=========================================="
   puts "점수 업데이트 시작"
@@ -158,13 +117,7 @@ def update_scores(service, sheet_id, users_data)
     value_range = Google::Apis::SheetsV4::ValueRange.new(values: [[new_score]])
     
     begin
-      service.update_spreadsheet_value(
-        sheet_id,
-        range,
-        value_range,
-        value_input_option: 'USER_ENTERED'
-      )
-      
+      service.update_spreadsheet_value(sheet_id, range, value_range, value_input_option: 'USER_ENTERED')
       puts "[업데이트] #{user_id} (#{data[:name]}) - #{current}점 → #{new_score}점"
       update_count += 1
     rescue => e
@@ -177,7 +130,6 @@ def update_scores(service, sheet_id, users_data)
   puts "=========================================="
 end
 
-# 요약 출력
 def print_summary(users_data)
   puts "\n=========================================="
   puts "복구 요약"
@@ -202,7 +154,6 @@ def print_summary(users_data)
     end
   end
   
-  # 기숙사별 집계
   house_totals = Hash.new(0)
   users_data.each do |user_id, data|
     next if data[:house].empty?
@@ -218,9 +169,7 @@ def print_summary(users_data)
   end
 end
 
-# 메인 실행
 begin
-  # 사용자 시트에서 직접 계산
   users_data = calculate_scores_from_user_sheet(sheets_service, SHEET_ID)
   
   if users_data.empty?
@@ -228,10 +177,8 @@ begin
     exit
   end
   
-  # 요약 출력
   print_summary(users_data)
   
-  # 확인 후 업데이트
   puts "\n=========================================="
   puts "위 내용으로 점수를 업데이트하시겠습니까?"
   puts "yes 입력 시 실행, 다른 입력 시 취소"
@@ -246,9 +193,6 @@ begin
   else
     puts "\n[취소] 업데이트가 취소되었습니다."
   end
-  
 rescue => e
   puts "\n[오류] #{e.class}: #{e.message}"
-  puts "\n에러 상세:"
-  puts e.backtrace.first(5)
 end
