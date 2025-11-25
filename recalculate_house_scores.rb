@@ -1,13 +1,12 @@
-#!/usr/bin/env ruby
-# recalculate_house_scores.rb
-# 기숙사 점수를 수동으로 재계산하는 스크립트
-
+# restore_house_scores_by_date.rb
 require 'bundler/setup'
 Bundler.require
 
-puts "=" * 60
-puts "기숙사 점수 재계산 스크립트"
-puts "=" * 60
+require 'date'
+
+puts "=========================================="
+puts "개별 기숙사 점수 복구 (출석날짜 기반)"
+puts "=========================================="
 
 # Google Sheets 서비스 초기화
 begin
@@ -18,100 +17,182 @@ begin
   )
   credentials.fetch_access_token!
   sheets_service.authorization = credentials
-  
-  puts "✓ Google Sheets 연결 성공"
+  spreadsheet = sheets_service.get_spreadsheet(ENV["GOOGLE_SHEET_ID"])
+  puts "[성공] Google Sheets 연결: #{spreadsheet.properties.title}"
 rescue => e
-  puts "✗ Google Sheets 연결 실패: #{e.message}"
-  exit 1
+  puts "[실패] Google Sheets 연결 실패: #{e.message}"
+  exit
 end
 
-sheet_id = ENV["GOOGLE_SHEET_ID"]
+SHEET_ID = ENV["GOOGLE_SHEET_ID"]
 
-# 1단계: 사용자 시트에서 기숙사별 점수 집계
-puts "\n[1단계] 사용자 시트에서 점수 집계 중..."
-
-range = "'사용자'!A:K"
-response = sheets_service.get_spreadsheet_values(sheet_id, range)
-users = response.values || []
-
-if users.empty?
-  puts "✗ 사용자 시트가 비어있습니다."
-  exit 1
+# 사용자 시트 읽기 및 출석 횟수 계산
+def calculate_scores_from_user_sheet(service, sheet_id)
+  range = "사용자!A:K"
+  response = service.get_spreadsheet_values(sheet_id, range)
+  values = response.values || []
+  
+  return {} if values.empty?
+  
+  header = values[0]
+  puts "\n[사용자 시트] 헤더: #{header.inspect}"
+  
+  # 열 인덱스 (0-based)
+  attendance_col = 8  # I열 - 출석날짜
+  homework_col = 6    # G열 - 과제날짜
+  
+  scores = {}
+  
+  values[1..].each_with_index do |row, idx|
+    next if row.nil? || row[0].nil?
+    
+    user_id = row[0].to_s.gsub('@', '').strip
+    name = row[1].to_s.strip
+    house = row[5].to_s.strip
+    current_score = (row[10] || 0).to_i
+    
+    # 출석날짜가 있으면 1점
+    attendance_date = row[attendance_col].to_s.strip
+    attendance_score = attendance_date.empty? ? 0 : 1
+    
+    # 과제날짜 확인
+    homework_date = row[homework_col].to_s.strip
+    homework_score = homework_date.empty? ? 0 : 3
+    
+    total_score = attendance_score + homework_score
+    
+    scores[user_id] = {
+      row_num: idx + 2,
+      name: name,
+      house: house,
+      current_score: current_score,
+      calculated_score: total_score,
+      attendance: attendance_score > 0,
+      homework: homework_score > 0
+    }
+    
+    if total_score > 0
+      detail = []
+      detail << "출석" if attendance_score > 0
+      detail << "과제" if homework_score > 0
+      puts "[계산] #{user_id} (#{name}) - #{total_score}점 (#{detail.join(', ')})"
+    end
+  end
+  
+  puts "\n[계산 완료] #{scores.size}명 처리"
+  scores
 end
 
-headers = users[0]
-house_idx = headers.index("기숙사")
-score_idx = headers.index("개별 기숙사 점수")
-
-if house_idx.nil? || score_idx.nil?
-  puts "✗ '기숙사' 또는 '개별 기숙사 점수' 열을 찾을 수 없습니다."
-  puts "현재 헤더: #{headers.inspect}"
-  exit 1
+# 점수 업데이트
+def update_scores(service, sheet_id, users_data)
+  puts "\n=========================================="
+  puts "점수 업데이트 시작"
+  puts "=========================================="
+  
+  update_count = 0
+  
+  users_data.each do |user_id, data|
+    current = data[:current_score]
+    new_score = data[:calculated_score]
+    
+    if current == new_score
+      puts "[변경없음] #{user_id} (#{data[:name]}) - #{current}점"
+      next
+    end
+    
+    range = "사용자!K#{data[:row_num]}"
+    value_range = Google::Apis::SheetsV4::ValueRange.new(values: [[new_score]])
+    
+    begin
+      service.update_spreadsheet_value(
+        sheet_id,
+        range,
+        value_range,
+        value_input_option: 'USER_ENTERED'
+      )
+      
+      puts "[업데이트] #{user_id} (#{data[:name]}) - #{current}점 → #{new_score}점"
+      update_count += 1
+    rescue => e
+      puts "[실패] #{user_id} - #{e.message}"
+    end
+  end
+  
+  puts "\n=========================================="
+  puts "업데이트 완료: #{update_count}명"
+  puts "=========================================="
 end
 
-puts "✓ 열 위치 확인: 기숙사=#{house_idx}, 점수=#{score_idx}"
-
-# 기숙사별 합계 계산
-house_scores = Hash.new(0)
-user_count = 0
-
-users[1..].each do |row|
-  next if row.nil? || row.empty?
+# 요약 출력
+def print_summary(users_data)
+  puts "\n=========================================="
+  puts "복구 요약"
+  puts "=========================================="
   
-  house = row[house_idx].to_s.strip
-  score = (row[score_idx] || 0).to_i
+  total_users = users_data.size
+  users_with_score = users_data.count { |k, v| v[:calculated_score] > 0 }
   
-  next if house.empty?
+  puts "전체 사용자: #{total_users}명"
+  puts "점수 있는 사용자: #{users_with_score}명"
   
-  house_scores[house] += score
-  user_count += 1
+  if users_with_score > 0
+    puts "\n[점수 있는 사용자 목록]"
+    users_data.select { |k, v| v[:calculated_score] > 0 }
+              .sort_by { |k, v| -v[:calculated_score] }
+              .each do |user_id, data|
+      detail = []
+      detail << "출석" if data[:attendance]
+      detail << "과제" if data[:homework]
+      puts "  #{user_id} (#{data[:name]}) [#{data[:house]}] - #{data[:calculated_score]}점 (#{detail.join(', ')})"
+    end
+  end
+  
+  # 기숙사별 집계
+  house_totals = Hash.new(0)
+  users_data.each do |user_id, data|
+    next if data[:house].empty?
+    house_totals[data[:house]] += data[:calculated_score]
+  end
+  
+  if house_totals.any?
+    puts "\n[기숙사별 합계]"
+    house_totals.sort_by { |k, v| -v }.each do |house, total|
+      member_count = users_data.count { |k, v| v[:house] == house && v[:calculated_score] > 0 }
+      puts "  #{house}: #{total}점 (활동 인원: #{member_count}명)"
+    end
+  end
 end
 
-puts "✓ 처리된 학생 수: #{user_count}"
-puts "✓ 계산된 기숙사 점수:"
-house_scores.each do |house, score|
-  puts "  - #{house}: #{score}점"
+# 메인 실행
+begin
+  # 사용자 시트에서 직접 계산
+  users_data = calculate_scores_from_user_sheet(sheets_service, SHEET_ID)
+  
+  if users_data.empty?
+    puts "\n[오류] 사용자 시트가 비어있습니다."
+    exit
+  end
+  
+  # 요약 출력
+  print_summary(users_data)
+  
+  # 확인 후 업데이트
+  puts "\n=========================================="
+  puts "위 내용으로 점수를 업데이트하시겠습니까?"
+  puts "yes 입력 시 실행, 다른 입력 시 취소"
+  puts "=========================================="
+  print "입력: "
+  
+  answer = gets.chomp.strip.downcase
+  
+  if answer == 'yes'
+    update_scores(sheets_service, SHEET_ID, users_data)
+    puts "\n점수 복구가 완료되었습니다."
+  else
+    puts "\n[취소] 업데이트가 취소되었습니다."
+  end
+  
+rescue => e
+  puts "\n[오류] #{e.message}"
+  puts e.backtrace.first(5)
 end
-
-# 2단계: 기숙사 시트 업데이트
-puts "\n[2단계] 기숙사 시트 업데이트 중..."
-
-range = "'기숙사'!A:B"
-response = sheets_service.get_spreadsheet_values(sheet_id, range)
-houses = response.values || []
-
-if houses.empty?
-  puts "✗ 기숙사 시트가 비어있습니다."
-  exit 1
-end
-
-updated_count = 0
-houses.each_with_index do |row, i|
-  next if i == 0  # 헤더 스킵
-  
-  house_name = row[0].to_s.strip
-  next if house_name.empty?
-  
-  total_score = house_scores[house_name] || 0
-  
-  # 업데이트
-  cell_range = "'기숙사'!B#{i + 1}"
-  value_range = Google::Apis::SheetsV4::ValueRange.new(values: [[total_score]])
-  sheets_service.update_spreadsheet_value(
-    sheet_id,
-    cell_range,
-    value_range,
-    value_input_option: 'USER_ENTERED'
-  )
-  
-  puts "  ✓ #{house_name}: #{total_score}점 업데이트"
-  updated_count += 1
-end
-
-puts "\n" + "=" * 60
-puts "재계산 완료!"
-puts "=" * 60
-puts "- 처리된 학생: #{user_count}명"
-puts "- 업데이트된 기숙사: #{updated_count}개"
-puts
-puts "Google Sheets에서 결과를 확인하세요."
