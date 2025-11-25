@@ -5,6 +5,8 @@ require 'dotenv'
 Dotenv.load('.env')
 require 'mastodon'
 require 'date'
+require 'google/apis/sheets_v4'
+require 'googleauth'
 
 puts "=========================================="
 puts "마스토돈에서 활동 내역 가져오기"
@@ -16,7 +18,7 @@ SHEET_ID = ENV["SHEET_ID"] || ENV["GOOGLE_SHEET_ID"]
 base_url = ENV['MASTODON_BASE_URL'] || ENV['MASTODON_DOMAIN']
 token = ENV['MASTODON_TOKEN'] || ENV['ACCESS_TOKEN']
 
-# base_url에 https:// 추가 (없는 경우)
+# base_url에 https:// 추가
 unless base_url.to_s.start_with?('http')
   base_url = "https://#{base_url}"
 end
@@ -60,7 +62,7 @@ end
 
 puts "\n[기간] #{start_date} ~ #{end_date}"
 
-# 교수봇 계정 정보 가져오기
+# 교수봇 계정 정보
 puts "[진행] 교수봇 계정 정보 확인 중..."
 begin
   me = client.verify_credentials
@@ -76,7 +78,7 @@ activities = Hash.new { |h, k| h[k] = { attendance: {}, homework: {} } }
 
 puts "\n[진행] 멘션 가져오는 중..."
 
-# 멘션 가져오기 (최대 1000개)
+# 멘션 가져오기
 max_id = nil
 total_checked = 0
 total_found = 0
@@ -89,12 +91,15 @@ begin
     puts "[진행] 페이지 #{page + 1} 로딩 중..."
     notifications = client.notifications(options)
     
-    if notifications.empty?
+    # Mastodon::Collection을 배열로 변환
+    notif_array = notifications.to_a
+    
+    if notif_array.empty?
       puts "[알림] 더 이상 멘션이 없습니다."
       break
     end
     
-    notifications.each do |notif|
+    notif_array.each do |notif|
       next unless notif.type == 'mention'
       
       status = notif.status
@@ -132,17 +137,17 @@ begin
     end
     
     # 다음 페이지
-    max_id = notifications.last.id
+    max_id = notif_array.last.id
     
     # 마지막 툿이 기간 시작일보다 이전이면 중단
-    last_date = Time.parse(notifications.last.status.created_at).to_date
+    last_date = Time.parse(notif_array.last.status.created_at).to_date
     if last_date < start_date
       puts "[알림] 검색 기간을 벗어났습니다."
       break
     end
     
     puts "[진행] #{total_checked}개 확인, #{total_found}개 활동 발견..."
-    sleep(0.5)  # API 제한 방지
+    sleep(0.5)
   end
 rescue => e
   puts "[오류] 멘션 가져오기 실패: #{e.message}"
@@ -157,7 +162,6 @@ puts "발견한 활동: #{total_found}개"
 
 if activities.empty?
   puts "\n[경고] 해당 기간에 활동 내역을 찾을 수 없습니다."
-  puts "기간을 다시 확인해주세요."
   exit
 end
 
@@ -193,7 +197,7 @@ puts "  출석 총합: #{total_attendance}회"
 puts "  과제 총합: #{total_homework}회"
 puts "  점수 총합: #{total_score}점"
 
-# 기숙사별 집계를 위해 사용자 정보 로드
+# 기숙사별 집계
 puts "\n[진행] 기숙사 정보 로드 중..."
 
 begin
@@ -286,8 +290,45 @@ begin
     sync_answer = gets.chomp.strip.downcase
     
     if sync_answer == 'yes'
-      puts "\n기숙사 점수 동기화 중..."
-      system("bundle exec ruby sync_house_scores.rb")
+      puts "\n[진행] 기숙사 점수 동기화 중..."
+      
+      # 기숙사 시트 읽기
+      house_range = "기숙사!A:B"
+      house_response = sheets_service.get_spreadsheet_values(SHEET_ID, house_range)
+      house_values = house_response.values || []
+      
+      # 사용자 시트에서 모든 사용자의 개별 기숙사 점수 합산
+      recalc_house_totals = Hash.new(0)
+      user_values[1..].each do |row|
+        next if row.nil? || row[0].nil?
+        house = (row[5] || "").to_s.strip
+        next if house.empty? || house =~ /^\d{4}-\d{2}-\d{2}$/
+        individual_score = (row[10] || 0).to_i
+        recalc_house_totals[house] += individual_score
+      end
+      
+      # 기숙사 시트 업데이트
+      house_values[1..].each_with_index do |row, idx|
+        next if row.nil? || row[0].nil?
+        house_name = row[0].to_s.strip
+        if recalc_house_totals.key?(house_name)
+          row_num = idx + 2
+          new_total = recalc_house_totals[house_name]
+          range = "기숙사!B#{row_num}"
+          value_range = Google::Apis::SheetsV4::ValueRange.new(values: [[new_total]])
+          
+          sheets_service.update_spreadsheet_value(
+            SHEET_ID,
+            range,
+            value_range,
+            value_input_option: 'USER_ENTERED'
+          )
+          
+          puts "[동기화] #{house_name}: #{new_total}점"
+        end
+      end
+      
+      puts "\n[완료] 기숙사 점수 동기화 완료"
     end
   else
     puts "[취소] 시트 업데이트가 취소되었습니다."
