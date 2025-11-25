@@ -1,6 +1,10 @@
-# restore_house_scores_by_date.rb (수정 버전)
+# restore_house_scores_by_date.rb (최종 수정 버전)
 require 'bundler/setup'
 Bundler.require
+
+# .env 파일 로드 (중요!)
+require 'dotenv'
+Dotenv.load('.env')
 
 require 'date'
 
@@ -12,6 +16,19 @@ puts "=========================================="
 unless ENV["GOOGLE_SHEET_ID"]
   puts "[오류] GOOGLE_SHEET_ID 환경변수가 설정되지 않았습니다."
   puts ".env 파일을 확인하세요."
+  puts "\n현재 디렉토리: #{Dir.pwd}"
+  puts ".env 파일 존재 여부: #{File.exist?('.env')}"
+  if File.exist?('.env')
+    puts ".env 파일 내용:"
+    File.readlines('.env').each do |line|
+      # 토큰은 숨기고 출력
+      if line.include?('TOKEN')
+        puts "  #{line.split('=').first}=***"
+      else
+        puts "  #{line}"
+      end
+    end
+  end
   exit
 end
 
@@ -20,6 +37,7 @@ puts "[확인] GOOGLE_SHEET_ID: #{ENV['GOOGLE_SHEET_ID']}"
 # credentials.json 파일 확인
 unless File.exist?('credentials.json')
   puts "[오류] credentials.json 파일을 찾을 수 없습니다."
+  puts "현재 디렉토리: #{Dir.pwd}"
   exit
 end
 
@@ -29,7 +47,7 @@ puts "[확인] credentials.json 파일 존재"
 begin
   sheets_service = Google::Apis::SheetsV4::SheetsService.new
   
-  # 서비스 계정 인증 (수정된 방식)
+  # 서비스 계정 인증
   credentials = Google::Auth::ServiceAccountCredentials.make_creds(
     json_key_io: File.open('credentials.json'),
     scope: Google::Apis::SheetsV4::AUTH_SPREADSHEETS
