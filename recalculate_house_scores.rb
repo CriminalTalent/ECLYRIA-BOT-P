@@ -1,8 +1,8 @@
-# restore_house_scores_by_date.rb (최종 수정 버전)
+# restore_house_scores_by_date.rb (환경변수명 수정 버전)
 require 'bundler/setup'
 Bundler.require
 
-# .env 파일 로드 (중요!)
+# .env 파일 로드
 require 'dotenv'
 Dotenv.load('.env')
 
@@ -12,27 +12,18 @@ puts "=========================================="
 puts "개별 기숙사 점수 복구 (출석날짜 기반)"
 puts "=========================================="
 
-# 환경변수 확인
-unless ENV["GOOGLE_SHEET_ID"]
-  puts "[오류] GOOGLE_SHEET_ID 환경변수가 설정되지 않았습니다."
+# 환경변수 확인 (SHEET_ID 또는 GOOGLE_SHEET_ID)
+SHEET_ID = ENV["SHEET_ID"] || ENV["GOOGLE_SHEET_ID"]
+
+unless SHEET_ID
+  puts "[오류] SHEET_ID 환경변수가 설정되지 않았습니다."
   puts ".env 파일을 확인하세요."
   puts "\n현재 디렉토리: #{Dir.pwd}"
   puts ".env 파일 존재 여부: #{File.exist?('.env')}"
-  if File.exist?('.env')
-    puts ".env 파일 내용:"
-    File.readlines('.env').each do |line|
-      # 토큰은 숨기고 출력
-      if line.include?('TOKEN')
-        puts "  #{line.split('=').first}=***"
-      else
-        puts "  #{line}"
-      end
-    end
-  end
   exit
 end
 
-puts "[확인] GOOGLE_SHEET_ID: #{ENV['GOOGLE_SHEET_ID']}"
+puts "[확인] SHEET_ID: #{SHEET_ID}"
 
 # credentials.json 파일 확인
 unless File.exist?('credentials.json')
@@ -61,14 +52,14 @@ begin
   sheets_service.authorization = credentials
   
   # 스프레드시트 정보 가져오기
-  spreadsheet = sheets_service.get_spreadsheet(ENV["GOOGLE_SHEET_ID"])
+  spreadsheet = sheets_service.get_spreadsheet(SHEET_ID)
   puts "[성공] Google Sheets 연결: #{spreadsheet.properties.title}"
   
 rescue Google::Apis::ClientError => e
   puts "[실패] Google API 오류: #{e.message}"
   puts "상태 코드: #{e.status_code}"
   puts "\n가능한 원인:"
-  puts "1. GOOGLE_SHEET_ID가 잘못되었습니다."
+  puts "1. SHEET_ID가 잘못되었습니다."
   puts "2. 서비스 계정에 시트 접근 권한이 없습니다."
   puts "3. credentials.json 파일이 올바르지 않습니다."
   exit
@@ -78,8 +69,6 @@ rescue => e
   puts e.backtrace.first(5)
   exit
 end
-
-SHEET_ID = ENV["GOOGLE_SHEET_ID"]
 
 # 사용자 시트 읽기 및 출석 횟수 계산
 def calculate_scores_from_user_sheet(service, sheet_id)
@@ -144,6 +133,7 @@ def calculate_scores_from_user_sheet(service, sheet_id)
   scores
 rescue => e
   puts "[오류] 사용자 시트 읽기 실패: #{e.message}"
+  puts e.backtrace.first(3)
   {}
 end
 
