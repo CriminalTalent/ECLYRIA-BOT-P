@@ -1,4 +1,4 @@
-# restore_house_scores_by_date.rb
+# restore_house_scores_by_date.rb (수정 버전)
 require 'bundler/setup'
 Bundler.require
 
@@ -8,19 +8,56 @@ puts "=========================================="
 puts "개별 기숙사 점수 복구 (출석날짜 기반)"
 puts "=========================================="
 
+# 환경변수 확인
+unless ENV["GOOGLE_SHEET_ID"]
+  puts "[오류] GOOGLE_SHEET_ID 환경변수가 설정되지 않았습니다."
+  puts ".env 파일을 확인하세요."
+  exit
+end
+
+puts "[확인] GOOGLE_SHEET_ID: #{ENV['GOOGLE_SHEET_ID']}"
+
+# credentials.json 파일 확인
+unless File.exist?('credentials.json')
+  puts "[오류] credentials.json 파일을 찾을 수 없습니다."
+  exit
+end
+
+puts "[확인] credentials.json 파일 존재"
+
 # Google Sheets 서비스 초기화
 begin
   sheets_service = Google::Apis::SheetsV4::SheetsService.new
+  
+  # 서비스 계정 인증 (수정된 방식)
   credentials = Google::Auth::ServiceAccountCredentials.make_creds(
     json_key_io: File.open('credentials.json'),
-    scope: 'https://www.googleapis.com/auth/spreadsheets'
+    scope: Google::Apis::SheetsV4::AUTH_SPREADSHEETS
   )
+  
+  puts "[확인] 인증 정보 로드 완료"
+  
   credentials.fetch_access_token!
+  puts "[확인] 액세스 토큰 획득 완료"
+  
   sheets_service.authorization = credentials
+  
+  # 스프레드시트 정보 가져오기
   spreadsheet = sheets_service.get_spreadsheet(ENV["GOOGLE_SHEET_ID"])
   puts "[성공] Google Sheets 연결: #{spreadsheet.properties.title}"
+  
+rescue Google::Apis::ClientError => e
+  puts "[실패] Google API 오류: #{e.message}"
+  puts "상태 코드: #{e.status_code}"
+  puts "\n가능한 원인:"
+  puts "1. GOOGLE_SHEET_ID가 잘못되었습니다."
+  puts "2. 서비스 계정에 시트 접근 권한이 없습니다."
+  puts "3. credentials.json 파일이 올바르지 않습니다."
+  exit
 rescue => e
-  puts "[실패] Google Sheets 연결 실패: #{e.message}"
+  puts "[실패] Google Sheets 연결 실패: #{e.class} - #{e.message}"
+  puts "\n에러 상세:"
+  puts e.backtrace.first(5)
   exit
 end
 
@@ -28,14 +65,20 @@ SHEET_ID = ENV["GOOGLE_SHEET_ID"]
 
 # 사용자 시트 읽기 및 출석 횟수 계산
 def calculate_scores_from_user_sheet(service, sheet_id)
+  puts "\n[작업] 사용자 시트 읽기 중..."
+  
   range = "사용자!A:K"
   response = service.get_spreadsheet_values(sheet_id, range)
   values = response.values || []
   
-  return {} if values.empty?
+  if values.empty?
+    puts "[오류] 사용자 시트가 비어있습니다."
+    return {}
+  end
   
   header = values[0]
-  puts "\n[사용자 시트] 헤더: #{header.inspect}"
+  puts "[확인] 사용자 시트 헤더: #{header.inspect}"
+  puts "[확인] 총 #{values.size - 1}명의 사용자 데이터 발견"
   
   # 열 인덱스 (0-based)
   attendance_col = 8  # I열 - 출석날짜
@@ -48,15 +91,15 @@ def calculate_scores_from_user_sheet(service, sheet_id)
     
     user_id = row[0].to_s.gsub('@', '').strip
     name = row[1].to_s.strip
-    house = row[5].to_s.strip
+    house = (row[5] || "").to_s.strip
     current_score = (row[10] || 0).to_i
     
     # 출석날짜가 있으면 1점
-    attendance_date = row[attendance_col].to_s.strip
+    attendance_date = (row[attendance_col] || "").to_s.strip
     attendance_score = attendance_date.empty? ? 0 : 1
     
     # 과제날짜 확인
-    homework_date = row[homework_col].to_s.strip
+    homework_date = (row[homework_col] || "").to_s.strip
     homework_score = homework_date.empty? ? 0 : 3
     
     total_score = attendance_score + homework_score
@@ -81,6 +124,9 @@ def calculate_scores_from_user_sheet(service, sheet_id)
   
   puts "\n[계산 완료] #{scores.size}명 처리"
   scores
+rescue => e
+  puts "[오류] 사용자 시트 읽기 실패: #{e.message}"
+  {}
 end
 
 # 점수 업데이트
@@ -143,7 +189,8 @@ def print_summary(users_data)
       detail = []
       detail << "출석" if data[:attendance]
       detail << "과제" if data[:homework]
-      puts "  #{user_id} (#{data[:name]}) [#{data[:house]}] - #{data[:calculated_score]}점 (#{detail.join(', ')})"
+      house_info = data[:house].empty? ? "미배정" : data[:house]
+      puts "  #{user_id} (#{data[:name]}) [#{house_info}] - #{data[:calculated_score]}점 (#{detail.join(', ')})"
     end
   end
   
@@ -169,7 +216,7 @@ begin
   users_data = calculate_scores_from_user_sheet(sheets_service, SHEET_ID)
   
   if users_data.empty?
-    puts "\n[오류] 사용자 시트가 비어있습니다."
+    puts "\n[오류] 처리할 사용자 데이터가 없습니다."
     exit
   end
   
@@ -193,6 +240,7 @@ begin
   end
   
 rescue => e
-  puts "\n[오류] #{e.message}"
+  puts "\n[오류] #{e.class}: #{e.message}"
+  puts "\n에러 상세:"
   puts e.backtrace.first(5)
 end
