@@ -12,11 +12,11 @@ puts "=========================================="
 puts "마스토돈에서 활동 내역 가져오기"
 puts "=========================================="
 
-SHEET_ID = ENV["SHEET_ID"] || ENV["GOOGLE_SHEET_ID"]
+SHEET_ID = ENV["GOOGLE_SHEET_ID"]
 
 # 마스토돈 설정 확인
-base_url = ENV['MASTODON_BASE_URL'] || ENV['MASTODON_DOMAIN']
-token = ENV['MASTODON_TOKEN'] || ENV['ACCESS_TOKEN']
+base_url = ENV['MASTODON_BASE_URL']
+token = ENV['MASTODON_TOKEN']
 
 # base_url에 https:// 추가
 unless base_url.to_s.start_with?('http')
@@ -24,9 +24,11 @@ unless base_url.to_s.start_with?('http')
 end
 
 puts "[확인] 마스토돈 서버: #{base_url}"
+puts "[확인] 토큰 길이: #{token.to_s.length}자"
 
-unless token
+if token.nil? || token.to_s.strip.empty?
   puts "[오류] 마스토돈 토큰이 설정되지 않았습니다."
+  puts "MASTODON_TOKEN 환경변수를 확인하세요."
   exit
 end
 
@@ -70,6 +72,7 @@ begin
   puts "[확인] 교수봇 계정: @#{me.acct}"
 rescue => e
   puts "[오류] 계정 정보 가져오기 실패: #{e.message}"
+  puts e.backtrace.first(5)
   exit
 end
 
