@@ -12,7 +12,6 @@ require_relative 'mastodon_client'
 require_relative 'sheet_manager'
 require_relative 'professor_command_parser'
 require_relative 'cron_tasks/morning_attendance_push'
-require_relative 'cron_tasks/evening_attendance_end'
 require_relative 'cron_tasks/curfew_alert'
 require_relative 'cron_tasks/curfew_release'
 require_relative 'cron_tasks/midnight_reset'
@@ -71,16 +70,10 @@ mastodon = MastodonClient.new(
 # 스케줄러 시작
 scheduler = Rufus::Scheduler.new
 
-# 매일 아침 9:00 - 출석 시작 안내
+# 매일 아침 9:00 - 출석 시작 안내 (질문 형식)
 scheduler.cron '0 9 * * *' do
   puts "[스케줄러] 아침 9시 출석 안내 실행"
   run_morning_attendance_push(sheet_manager, mastodon)
-end
-
-# 매일 밤 22:00 - 출석 마감 안내
-scheduler.cron '0 22 * * *' do
-  puts "[스케줄러] 밤 10시 출석 마감 안내 실행"
-  run_evening_attendance_end(sheet_manager, mastodon)
 end
 
 # 매일 새벽 2:00 - 통금 알림
@@ -101,7 +94,7 @@ scheduler.cron '0 0 * * *' do
   run_midnight_reset(sheet_manager, mastodon)
 end
 
-puts "[스케줄러] 시작됨 (9시 출석, 22시 마감, 2시 통금, 6시 해제, 0시 초기화)"
+puts "[스케줄러] 시작됨 (9시 출석, 2시 통금, 6시 해제, 0시 초기화)"
 
 # Mentions API 처리 함수
 def fetch_mentions(since_id = nil)
