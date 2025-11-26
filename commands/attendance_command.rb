@@ -4,8 +4,6 @@ require_relative '../utils/house_score_updater'
 require 'date'
 
 class AttendanceCommand
-  include HouseScoreUpdater
-
   def initialize(sheet_manager, mastodon_client, sender, status)
     @sheet_manager = sheet_manager
     @mastodon_client = mastodon_client
@@ -38,13 +36,13 @@ class AttendanceCommand
 
     # 5. 출석 처리
     @sheet_manager.increment_user_value(@sender, "갈레온", 2)
-    @sheet_manager.increment_user_value(@sender, "개별 기숙사 점수", 1)  # 수정: 정확한 열 이름 사용
+    @sheet_manager.increment_user_value(@sender, "개별 기숙사 점수", 1)
     @sheet_manager.set_user_value(@sender, "출석날짜", today)
 
     puts "[출석] #{@sender} 출석 완료 - 갈레온 +2, 기숙사 점수 +1"
 
     # 6. 기숙사 점수 반영
-    update_house_scores(@sheet_manager)
+    @sheet_manager.sync_house_system if @sheet_manager.respond_to?(:sync_house_system)
 
     # 7. 교수님식 출석 멘트
     user_name = user[:name] || @sender
@@ -53,14 +51,29 @@ class AttendanceCommand
 
   rescue => e
     puts "[에러] AttendanceCommand 처리 중 예외 발생: #{e.message}"
-    puts e.backtrace.first(5)
+    puts "[에러] 상세: #{e.class}"
+    puts e.backtrace.first(10)
     professor_reply("음… 잠시 오류가 생긴 것 같아요. 잠시 후 다시 시도해보세요.")
   end
 
   private
 
   def professor_reply(message)
-    message = message.to_s.empty? ? "출석이 확인되었습니다." : message.dup
     @mastodon_client.reply(message, @status['id'])
+  end
+
+  def get_user_attendance_date(user_id)
+    data = @sheet_manager.read('사용자', 'A:I')
+    header = data[0]
+    attendance_col = header.index("출석날짜")
+    return nil unless attendance_col
+
+    data[1..].each do |row|
+      next if row.nil? || row[0].nil?
+      if row[0].to_s.strip == user_id
+        return row[attendance_col].to_s.strip
+      end
+    end
+    nil
   end
 end
