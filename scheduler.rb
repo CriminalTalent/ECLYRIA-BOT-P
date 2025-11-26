@@ -6,7 +6,6 @@ require_relative './mastodon_client'
 require_relative './sheet_manager'
 
 require_relative './cron_tasks/morning_attendance_push'
-require_relative './cron_tasks/evening_attendance_end'
 require_relative './cron_tasks/curfew_alert'
 require_relative './cron_tasks/curfew_release'
 
@@ -57,9 +56,9 @@ rescue => e
 end
 
 # ----------------------------------------------
-# 📌 매일 아침 7:00 - 출석 시작 안내
+# 📌 매일 아침 9:00 - 출석 시작 안내 (질문 형식)
 # ----------------------------------------------
-scheduler.cron '0 7 * * *' do
+scheduler.cron '0 9 * * *' do
   flags = get_professor_flags(sheet_manager)
   if flags[:morning]
     safe_task('morning_attendance_push') do
@@ -68,16 +67,6 @@ scheduler.cron '0 7 * * *' do
     end
   else
     puts "[건너뜀] 아침출석자동툿 비활성화됨"
-  end
-end
-
-# ----------------------------------------------
-# 📌 매일 밤 22:00 - 출석 마감 안내
-# ----------------------------------------------
-scheduler.cron '0 22 * * *' do
-  safe_task('evening_attendance_end') do
-    run_evening_attendance_end(sheet_manager, mastodon)
-    puts "[실행됨] 출석마감자동툿"
   end
 end
 
@@ -112,4 +101,5 @@ scheduler.cron '0 6 * * *' do
 end
 
 puts "[교수봇 스케줄러] 실행 중... Ctrl+C 로 종료 가능"
+puts "[스케줄] 9시 출석(질문), 2시 통금, 6시 통금해제"
 scheduler.join
