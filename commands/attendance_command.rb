@@ -1,5 +1,5 @@
 # commands/attendance_command.rb
-# 기숙사원 시트 연동 버전
+# 기숙사원 시트 연동 버전 (write 메서드 수정)
 require_relative '../utils/professor_control'
 require 'date'
 
@@ -92,7 +92,7 @@ class AttendanceCommand
     @mastodon_client.reply(message, @status['id'])
   end
 
-  # 사용자 시트 특정 셀 업데이트
+  # 사용자 시트 특정 셀 업데이트 (수정된 버전)
   def update_user_cell(user_id, column, value)
     data = @sheet_manager.read('사용자', 'A:J')
     return false if data.empty?
@@ -102,9 +102,10 @@ class AttendanceCommand
       
       if row[0].to_s.gsub('@', '').strip == user_id
         row_num = idx + 1
-        range = "사용자!#{column}#{row_num}"
-        @sheet_manager.write(range, '', [[value]])
-        puts "[업데이트] #{range} = #{value}"
+        range = "#{column}#{row_num}"
+        # ✅ 올바른 호출: write(시트명, 범위, 값)
+        @sheet_manager.write('사용자', range, [[value]])
+        puts "[업데이트] 사용자!#{range} = #{value}"
         return true
       end
     end
@@ -115,7 +116,7 @@ class AttendanceCommand
     false
   end
 
-  # 기숙사원 시트에서 개인점수 증가
+  # 기숙사원 시트에서 개인점수 증가 (수정된 버전)
   def add_house_member_score(user_id, house, points)
     data = @sheet_manager.read('기숙사원', 'A:E')
     
@@ -136,12 +137,10 @@ class AttendanceCommand
         row_num = idx + 1
         
         # D열(개인점수) 업데이트
-        range = "기숙사원!D#{row_num}"
-        @sheet_manager.write(range, '', [[new_score]])
+        @sheet_manager.write('기숙사원', "D#{row_num}", [[new_score]])
         
         # E열(최근활동일) 업데이트
-        range = "기숙사원!E#{row_num}"
-        @sheet_manager.write(range, '', [[Date.today.to_s]])
+        @sheet_manager.write('기숙사원', "E#{row_num}", [[Date.today.to_s]])
         
         puts "[기숙사원] #{user_id} 점수: #{current_score} → #{new_score}"
         return true
@@ -169,7 +168,7 @@ class AttendanceCommand
     false
   end
 
-  # 기숙사 시트 합계 동기화
+  # 기숙사 시트 합계 동기화 (수정된 버전)
   def sync_house_totals
     # 1. 기숙사원 시트에서 기숙사별 합계 계산
     member_data = @sheet_manager.read('기숙사원', 'A:D')
@@ -197,8 +196,8 @@ class AttendanceCommand
       new_total = house_totals[house_name] || 0
       row_num = idx + 1
       
-      range = "기숙사!B#{row_num}"
-      @sheet_manager.write(range, '', [[new_total]])
+      # ✅ 올바른 호출
+      @sheet_manager.write('기숙사', "B#{row_num}", [[new_total]])
       puts "[동기화] #{house_name}: #{new_total}점"
     end
 
