@@ -1,54 +1,74 @@
 # commands/homework_command.rb
+# 기숙사원 시트 연동 버전
 require 'date'
-require_relative '../utils/house_score_updater'
 require_relative '../utils/professor_control'
 
 class HomeworkCommand
-  include HouseScoreUpdater
-
   def initialize(sheet_manager, mastodon_client, sender, status)
     @sheet_manager   = sheet_manager
     @mastodon_client = mastodon_client
-    @sender          = sender.gsub('@', '')  # 시트 조회용
+    @sender          = sender.gsub('@', '')
     @status          = status
   end
 
   def execute
+    puts "[과제] 실행 시작 - 사용자: #{@sender}"
+    
     # 1. 학생 등록 여부 확인
     user = @sheet_manager.find_user(@sender)
     unless user
+      puts "[과제] 사용자 없음: #{@sender}"
       return professor_reply("아직 학적부에 이름이 없군요. [입학/이름]으로 먼저 등록해주세요.")
     end
 
+    user_name = user[:name]
+    house = user[:house]
+    
+    unless house && !house.empty?
+      puts "[과제] 기숙사 미배정: #{@sender}"
+      return professor_reply("아직 기숙사가 배정되지 않았네요. 먼저 기숙사 배정을 받으세요.")
+    end
+
+    puts "[과제] 사용자 확인: #{user_name} (#{house})"
+    
     today = Date.today.to_s
 
-    # 2. 과제 중복 제출 확인
-    # 주의: sheet_manager의 find_user가 homework_date를 반환하지 않으므로
-    # 직접 시트에서 읽어야 함
-    homework_date = get_user_homework_date(@sender)
-    if homework_date == today
+    # 2. 과제 중복 제출 확인 (G열: 마지막베팅일을 과제날짜로 사용)
+    last_homework = user[:last_bet_date].to_s.strip
+    puts "[과제] 마지막 과제 제출일: #{last_homework}"
+    
+    if last_homework == today
+      puts "[과제] 오늘 이미 제출함"
       return professor_reply("오늘은 이미 과제를 제출했어요. 하루 한 번만 가능합니다.")
     end
 
-    # 3. 과제 제출 처리
-    @sheet_manager.increment_user_value(@sender, "갈레온", 5)
-    @sheet_manager.increment_user_value(@sender, "개별 기숙사 점수", 3)  # 수정: 정확한 열 이름
+    # 3. 보상 지급
+    puts "[과제] 보상 지급 시작..."
     
-    # 과제날짜 필드가 시트에 있다면 업데이트
-    set_homework_date(@sender, today)
-
+    # 3-1. 갈레온 지급 (사용자 시트 C열)
+    current_galleon = user[:galleons] || 0
+    new_galleon = current_galleon + 5
+    update_user_cell(@sender, 'C', new_galleon)
+    puts "[과제] 갈레온: #{current_galleon} → #{new_galleon}"
+    
+    # 3-2. 과제 날짜 업데이트 (사용자 시트 G열)
+    update_user_cell(@sender, 'G', today)
+    puts "[과제] 과제날짜 업데이트: #{today}"
+    
+    # 3-3. 기숙사원 시트에서 개인점수 +3
+    add_house_member_score(@sender, house, 3)
+    
     puts "[과제] #{@sender} 과제 제출 완료 - 갈레온 +5, 기숙사 점수 +3"
 
-    # 4. 기숙사 점수 갱신
-    update_house_scores(@sheet_manager)
+    # 4. 기숙사 합계 동기화
+    sync_house_totals
 
-    # 5. 교수님식 피드백
-    user_name = user[:name] || @sender
-    message = "훌륭해요, #{user_name} 학생.\n과제를 성실히 마쳤군요. 보상으로 5갈레온, 기숙사 점수 +3을 드립니다."
+    # 5. 교수님 피드백
+    message = "훌륭해요, #{user_name} 학생.\n과제를 성실히 마쳤군요. 보상으로 5갈레온과 #{house} 점수 +3점을 드립니다."
     professor_reply(message)
 
   rescue => e
-    puts "[에러] HomeworkCommand 처리 중 예외 발생: #{e.message}"
+    puts "[에러] HomeworkCommand 처리 중 예외: #{e.message}"
     puts e.backtrace.first(5)
     professor_reply("음... 과제 제출 처리 중 문제가 생긴 것 같아요. 잠시 후 다시 시도해보세요.")
   end
@@ -59,51 +79,118 @@ class HomeworkCommand
     @mastodon_client.reply(message, @status['id'])
   end
 
-  # 사용자 시트에서 과제날짜 열 읽기 (L열 또는 커스텀 열)
-  def get_user_homework_date(user_id)
-    data = @sheet_manager.read('사용자', 'A:Z')
-    return nil if data.empty?
+  # 사용자 시트 특정 셀 업데이트
+  def update_user_cell(user_id, column, value)
+    data = @sheet_manager.read('사용자', 'A:J')
+    return false if data.empty?
 
-    header = data[0] || []
-    homework_col = header.index('과제날짜')
-    return nil unless homework_col
-
-    username_col = header.index('아이디') || 0
-
-    data.each_with_index do |row, i|
-      next if i.zero?
-      if row[username_col].to_s.strip == user_id.strip
-        return row[homework_col].to_s
+    data.each_with_index do |row, idx|
+      next if idx.zero? || row.nil? || row[0].nil?
+      
+      if row[0].to_s.gsub('@', '').strip == user_id
+        row_num = idx + 1
+        range = "사용자!#{column}#{row_num}"
+        @sheet_manager.write(range, '', [[value]])
+        puts "[업데이트] #{range} = #{value}"
+        return true
       end
     end
-    nil
+    
+    false
   rescue => e
-    puts "[에러] get_user_homework_date 실패: #{e.message}"
-    nil
+    puts "[에러] update_user_cell 실패: #{e.message}"
+    false
   end
 
-  # 사용자 시트에 과제날짜 기록 (있다면)
-  def set_homework_date(user_id, date)
-    data = @sheet_manager.read('사용자', 'A:Z')
-    return if data.empty?
+  # 기숙사원 시트에서 개인점수 증가
+  def add_house_member_score(user_id, house, points)
+    data = @sheet_manager.read('기숙사원', 'A:E')
+    
+    if data.empty?
+      puts "[경고] 기숙사원 시트가 비어있음"
+      return false
+    end
 
-    header = data[0] || []
-    homework_col = header.index('과제날짜')
-    return unless homework_col  # 과제날짜 열이 없으면 스킵
-
-    username_col = header.index('아이디') || 0
-
-    data.each_with_index do |row, i|
-      next if i.zero?
-      if row[username_col].to_s.strip == user_id.strip
-        col_letter = @sheet_manager.col_idx_to_a1(homework_col)
-        cell_range = @sheet_manager.a1_range('사용자', "#{col_letter}#{i + 1}")
-        @sheet_manager.write_range(cell_range, [[date]])
-        puts "[과제] #{user_id}의 과제날짜 = #{date}"
-        return
+    # 기존 회원 찾기
+    found = false
+    data.each_with_index do |row, idx|
+      next if idx.zero? || row.nil? || row[1].nil?
+      
+      if row[1].to_s.strip == user_id
+        found = true
+        current_score = (row[3] || 0).to_i
+        new_score = current_score + points
+        row_num = idx + 1
+        
+        # D열(개인점수) 업데이트
+        range = "기숙사원!D#{row_num}"
+        @sheet_manager.write(range, '', [[new_score]])
+        
+        # E열(최근활동일) 업데이트
+        range = "기숙사원!E#{row_num}"
+        @sheet_manager.write(range, '', [[Date.today.to_s]])
+        
+        puts "[기숙사원] #{user_id} 점수: #{current_score} → #{new_score}"
+        return true
       end
     end
+
+    # 기존 회원이 없으면 새로 추가
+    unless found
+      user = @sheet_manager.find_user(user_id)
+      new_row = [
+        house,
+        user_id,
+        user[:name],
+        points,
+        Date.today.to_s
+      ]
+      @sheet_manager.append('기숙사원', new_row)
+      puts "[기숙사원] 신규 추가: #{user_id} (#{points}점)"
+    end
+
+    true
   rescue => e
-    puts "[에러] set_homework_date 실패: #{e.message}"
+    puts "[에러] add_house_member_score 실패: #{e.message}"
+    puts e.backtrace.first(3)
+    false
+  end
+
+  # 기숙사 시트 합계 동기화
+  def sync_house_totals
+    # 1. 기숙사원 시트에서 기숙사별 합계 계산
+    member_data = @sheet_manager.read('기숙사원', 'A:D')
+    return if member_data.empty?
+
+    house_totals = Hash.new(0)
+    
+    member_data[1..].each do |row|
+      next if row.nil? || row[0].nil?
+      house_name = row[0].to_s.strip
+      score = (row[3] || 0).to_i
+      house_totals[house_name] += score
+    end
+
+    puts "[동기화] 기숙사별 합계: #{house_totals.inspect}"
+
+    # 2. 기숙사 시트 업데이트
+    house_data = @sheet_manager.read('기숙사', 'A:B')
+    return if house_data.empty?
+
+    house_data.each_with_index do |row, idx|
+      next if idx.zero? || row.nil? || row[0].nil?
+      
+      house_name = row[0].to_s.strip
+      new_total = house_totals[house_name] || 0
+      row_num = idx + 1
+      
+      range = "기숙사!B#{row_num}"
+      @sheet_manager.write(range, '', [[new_total]])
+      puts "[동기화] #{house_name}: #{new_total}점"
+    end
+
+  rescue => e
+    puts "[에러] sync_house_totals 실패: #{e.message}"
+    puts e.backtrace.first(3)
   end
 end
