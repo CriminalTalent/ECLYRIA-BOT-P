@@ -37,13 +37,25 @@ CURFEW_MESSAGES = [
 ]
 
 def run_curfew_alert(sheet_manager, mastodon_client)
-  # ✅ ProfessorControl 모듈 메서드 직접 호출
-  unless ProfessorControl.auto_push_enabled?(sheet_manager, "통금알람")
+  puts "[통금 알림] #{Time.now.strftime('%Y-%m-%d %H:%M:%S')} - 실행 시작"
+  
+  # ProfessorControl 모듈 메서드 직접 호출
+  enabled = ProfessorControl.auto_push_enabled?(sheet_manager, "통금알람")
+  puts "[통금 알림] 기능 상태: #{enabled ? 'ON' : 'OFF'}"
+  
+  unless enabled
     puts "[스킵] 통금알람이 OFF 상태입니다."
     return
   end
 
   message = CURFEW_MESSAGES.sample
-  mastodon_client.broadcast(message)
-  puts "[통금알림] #{message}"
+  puts "[통금 알림] 전송할 메시지: #{message}"
+  
+  begin
+    mastodon_client.broadcast(message)
+    puts "[통금 알림] 전송 완료"
+  rescue => e
+    puts "[에러] 통금 알림 전송 실패: #{e.message}"
+    puts e.backtrace.first(3)
+  end
 end
