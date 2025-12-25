@@ -1,4 +1,4 @@
-# main.rb (Professor Bot - 완전 수정판)
+# main.rb (Professor Bot - 스케줄러 로깅 강화 버전)
 require 'bundler/setup'
 require 'dotenv'
 require 'time'
@@ -36,7 +36,7 @@ LAST_ID_FILE = 'last_mention_id.txt'
 MENTION_ENDPOINT = "https://#{DOMAIN}/api/v1/notifications"
 POST_ENDPOINT    = "https://#{DOMAIN}/api/v1/statuses"
 
-puts "[교수봇] 실행 시작 (#{Time.now.strftime('%H:%M:%S')})"
+puts "[교수봇] 실행 시작 (#{Time.now.strftime('%Y-%m-%d %H:%M:%S')})"
 
 # Google Sheets 연결
 begin
@@ -69,32 +69,68 @@ mastodon = MastodonClient.new(
 
 # 스케줄러 시작
 scheduler = Rufus::Scheduler.new
+puts "[스케줄러] 초기화 완료"
 
 # 매일 아침 8:00 - 출석 시작 안내 (질문 형식)
 scheduler.cron '0 8 * * *' do
-  puts "[스케줄러] 아침 8시 출석 안내 실행"
-  run_morning_attendance_push(sheet_manager, mastodon)
+  puts "[스케줄러] #{Time.now.strftime('%Y-%m-%d %H:%M:%S')} - 아침 8시 출석 안내 실행 시도"
+  begin
+    run_morning_attendance_push(sheet_manager, mastodon)
+    puts "[스케줄러] 아침 출석 안내 실행 완료"
+  rescue => e
+    puts "[스케줄러 에러] 아침 출석 안내 실패: #{e.message}"
+    puts e.backtrace.first(5)
+  end
 end
 
 # 매일 새벽 2:00 - 통금 알림
 scheduler.cron '0 2 * * *' do
-  puts "[스케줄러] 새벽 2시 통금 알림 실행"
-  run_curfew_alert(sheet_manager, mastodon)
+  puts "[스케줄러] #{Time.now.strftime('%Y-%m-%d %H:%M:%S')} - 새벽 2시 통금 알림 실행 시도"
+  begin
+    run_curfew_alert(sheet_manager, mastodon)
+    puts "[스케줄러] 통금 알림 실행 완료"
+  rescue => e
+    puts "[스케줄러 에러] 통금 알림 실패: #{e.message}"
+    puts e.backtrace.first(5)
+  end
 end
 
 # 매일 아침 6:00 - 통금 해제 안내
 scheduler.cron '0 6 * * *' do
-  puts "[스케줄러] 아침 6시 통금 해제 안내 실행"
-  run_curfew_release(sheet_manager, mastodon)
+  puts "[스케줄러] #{Time.now.strftime('%Y-%m-%d %H:%M:%S')} - 아침 6시 통금 해제 안내 실행 시도"
+  begin
+    run_curfew_release(sheet_manager, mastodon)
+    puts "[스케줄러] 통금 해제 안내 실행 완료"
+  rescue => e
+    puts "[스케줄러 에러] 통금 해제 안내 실패: #{e.message}"
+    puts e.backtrace.first(5)
+  end
 end
 
 # 매일 자정 00:00 - 베팅 횟수 및 체력 초기화
 scheduler.cron '0 0 * * *' do
-  puts "[스케줄러] 자정 초기화 실행"
-  run_midnight_reset(sheet_manager, mastodon)
+  puts "[스케줄러] #{Time.now.strftime('%Y-%m-%d %H:%M:%S')} - 자정 초기화 실행 시도"
+  begin
+    run_midnight_reset(sheet_manager, mastodon)
+    puts "[스케줄러] 자정 초기화 실행 완료"
+  rescue => e
+    puts "[스케줄러 에러] 자정 초기화 실패: #{e.message}"
+    puts e.backtrace.first(5)
+  end
+end
+
+# 스케줄 확인 로그 (1시간마다)
+scheduler.cron '0 * * * *' do
+  puts "[스케줄러 상태] #{Time.now.strftime('%Y-%m-%d %H:%M:%S')} - 정상 작동 중"
+  puts "[다음 실행 예정] 8시 출석, 2시 통금, 6시 해제, 0시 초기화"
 end
 
 puts "[스케줄러] 시작됨 (8시 출석, 2시 통금, 6시 해제, 0시 초기화)"
+puts "[스케줄러] 다음 실행 시간:"
+puts "  - 출석 안내: 매일 08:00"
+puts "  - 통금 알림: 매일 02:00"
+puts "  - 통금 해제: 매일 06:00"
+puts "  - 자정 초기화: 매일 00:00"
 
 # Mentions API 처리 함수
 def fetch_mentions(since_id = nil)
