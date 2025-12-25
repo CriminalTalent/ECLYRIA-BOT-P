@@ -7,8 +7,17 @@ module ProfessorControl
   # 교수 시트에서 특정 기능(출석, 과제, 자동멘트 등) ON/OFF 상태 확인
   # --------------------------------------------------
   def auto_push_enabled?(sheet_manager, key)
-    puts "[DEBUG] ProfessorControl → SheetManager.auto_push_enabled?(#{key}) 호출"
-    sheet_manager.auto_push_enabled?(key: key)
+    puts "[ProfessorControl] auto_push_enabled? 체크 - 키: #{key}"
+    
+    begin
+      result = sheet_manager.auto_push_enabled?(key: key)
+      puts "[ProfessorControl] #{key} 상태: #{result ? 'ON' : 'OFF'}"
+      result
+    rescue => e
+      puts "[ProfessorControl 에러] auto_push_enabled? 실패: #{e.message}"
+      puts e.backtrace.first(3)
+      false
+    end
   end
 
   # --------------------------------------------------
