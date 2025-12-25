@@ -38,19 +38,31 @@ CURFEW_RELEASE_MESSAGES = [
 ]
 
 def run_curfew_release(sheet_manager, mastodon_client)
-  # ✅ 모듈 명시적 호출
-  unless ProfessorControl.auto_push_enabled?(sheet_manager, "통금해제알람")
+  puts "[통금 해제] #{Time.now.strftime('%Y-%m-%d %H:%M:%S')} - 실행 시작"
+  
+  # 모듈 명시적 호출
+  enabled = ProfessorControl.auto_push_enabled?(sheet_manager, "통금해제알람")
+  puts "[통금 해제] 기능 상태: #{enabled ? 'ON' : 'OFF'}"
+  
+  unless enabled
     puts "[스킵] 통금 해제 알람이 OFF 상태입니다."
     return
   end
 
-  # ✅ 날씨 메시지 불러오기
+  # 날씨 메시지 불러오기
   weather_info = WeatherMessage.random_weather_message_with_style
   release_msg = CURFEW_RELEASE_MESSAGES.sample
 
-  # ✅ 날씨 + 통금 해제 메시지 조합
+  # 날씨 + 통금 해제 메시지 조합
   final_message = "#{weather_info[:text]}\n\n#{release_msg}"
 
-  puts "[DEBUG] 전송할 메시지: #{final_message}"
-  mastodon_client.broadcast(final_message)
+  puts "[통금 해제] 전송할 메시지: #{final_message[0..100]}..."
+  
+  begin
+    mastodon_client.broadcast(final_message)
+    puts "[통금 해제] 전송 완료"
+  rescue => e
+    puts "[에러] 통금 해제 알림 전송 실패: #{e.message}"
+    puts e.backtrace.first(3)
+  end
 end
