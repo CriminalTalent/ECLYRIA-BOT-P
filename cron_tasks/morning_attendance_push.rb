@@ -194,7 +194,7 @@ def run_morning_attendance_push(sheet_manager, mastodon_client)
   
   # 출석 안내 메시지 생성
   attendance_message = <<~MSG
-    금일 출석체크 돌입니다. 아래에 멘션을 달아주시면 2갈레온, 기숙사 점수 1점이 지급됩니다. [출석]을 대답 앞에 달아주세요. 22시까지 출석이 가능합니다.
+    금일 출석체크 툿입니다. 아래에 멘션을 달아주시면 2갈레온, 기숙사 점수 1점이 지급됩니다. [출석]을 대답 앞에 달아주세요. 22시까지 출석이 가능합니다.
 
     #{today_question}
   MSG
